@@ -2,6 +2,7 @@
 
 import os
 import sys
+import subprocess
 
 import youtube_dl
 
@@ -39,6 +40,13 @@ def handle_download_error(error):
         error_summary = str(error).split(':')[0] if ':' in str(error) else str(error)
         print(f" [!] Error: Unable to download video - {error_summary}")
 
+def open_finder(path):
+    """Open Finder window to the specified directory (macOS only)."""
+    try:
+        subprocess.run(["open", path], check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
 def main():
     """Main function for the video downloader module."""
     utilities.clear()
@@ -59,6 +67,7 @@ def main():
         
         if download_video(url, download_path):
             print(" [+] Download completed successfully!")
+            open_finder(download_path)
             break
         else:
             print(" [!] Please try a different URL or 'exit' to quit\n")
