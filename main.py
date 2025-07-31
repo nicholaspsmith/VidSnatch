@@ -6,8 +6,18 @@ import traceback
 
 import modules.utilities as utilities
 import modules.config as config
+import modules.settings as settings
+import modules.folderSelector as folderSelector
 
 utilities.clear()
+
+# Check if this is first run or no download path is set
+if settings.is_first_run() or not settings.get_download_path():
+    selected_folder = folderSelector.prompt_for_download_folder()
+    if selected_folder:
+        settings.set_download_path(selected_folder)
+        utilities.clear()
+
 print(" [+] Checking required folders")
 
 video_downloads_path = config.get_video_download_path()

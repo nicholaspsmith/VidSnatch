@@ -1,6 +1,7 @@
 """Configuration constants for Quikvid-DL."""
 
 import os
+import modules.settings as settings
 
 __version__ = "2.0"
 __author__ = "N²"
@@ -21,5 +22,9 @@ DEFAULT_OUTPUT_TEMPLATE = "%(uploader)s - %(title)s - %(id)s.%(ext)s"
 DEBUG = False
 
 def get_video_download_path():
-    """Get the default path for video downloads."""
-    return os.path.join(DEFAULT_BASE_PATH, DEFAULT_VIDEO_SUBDIR)
+    """Get the path for video downloads (user preference or default)."""
+    user_path = settings.get_download_path()
+    if user_path and os.path.exists(user_path):
+        return user_path
+    else:
+        return os.path.join(DEFAULT_BASE_PATH, DEFAULT_VIDEO_SUBDIR)

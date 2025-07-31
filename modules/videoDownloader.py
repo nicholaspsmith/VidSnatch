@@ -8,6 +8,8 @@ import yt_dlp
 
 import modules.utilities as utilities
 import modules.config as config
+import modules.settings as settings
+import modules.folderSelector as folderSelector
 
 def download_video(url, download_path):
     """Download a video from the given URL."""
@@ -47,6 +49,34 @@ def open_finder(path):
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
+def show_help():
+    """Display help information and supported sites."""
+    print(" [?] Quikvid-DL Help")
+    print(" [?] Enter a video URL from any supported site to download it to your computer.")
+    
+    current_path = settings.get_download_path()
+    if current_path:
+        print(f" [+] Current download folder: {current_path}")
+    
+    print("\n [+] Commands:")
+    print(" [+] 'help' - Show this help message")
+    print(" [+] 'folder' - Change download folder")
+    print(" [+] 'exit' - Exit the program")
+    
+    print("\n [+] Top 20 Supported Sites:")
+    sites = [
+        "YouTube", "TikTok", "Instagram", "Facebook", "Twitter/X",
+        "Twitch", "Vimeo", "Dailymotion", "SoundCloud", "Spotify",
+        "Bilibili", "Reddit", "9GAG", "BBC iPlayer", "Bandcamp",
+        "Pornhub", "Mastodon", "Pinterest", "XHamster", "XVIDEOS"
+    ]
+    
+    for i, site in enumerate(sites, 1):
+        print(f" [{i:2d}] {site}")
+    
+    print("\n [+] Note: Over 1000+ sites are supported! See README for complete list.")
+    input("\n [?] Press Enter to continue...")
+
 def main():
     """Main function for the video downloader module."""
     utilities.clear()
@@ -54,13 +84,31 @@ def main():
     download_path = config.get_video_download_path()
     
     while True:
-        url = input(" [?] Video URL from supported sites - like YouTube, Vimeo, TikTok (or 'exit' to quit): ")
+        url = input(" [?] Video URL from supported sites (or 'help'/'folder'/'exit'): ")
         
         if url.lower() == "exit":
             sys.exit(0)
         
+        if url.lower() == "help":
+            show_help()
+            utilities.clear()
+            continue
+        
+        if url.lower() == "folder":
+            print(" [?] Changing download folder...")
+            new_folder = folderSelector.select_download_folder()
+            if new_folder:
+                settings.set_download_path(new_folder)
+                download_path = config.get_video_download_path()
+                print(f" [+] Download folder changed to: {new_folder}")
+            else:
+                print(" [!] No folder selected. Keeping current folder.")
+            input(" [?] Press Enter to continue...")
+            utilities.clear()
+            continue
+        
         if not url.strip():
-            print(" [!] Please enter a valid URL or 'exit' to quit\n")
+            print(" [!] Please enter a valid URL, 'help', 'folder', or 'exit' to quit\n")
             continue
 
         print(" [+] Downloading, please stand by...\n")
@@ -70,4 +118,4 @@ def main():
             open_finder(download_path)
             break
         else:
-            print(" [!] Please try a different URL or 'exit' to quit\n")
+            print(" [!] Please try a different URL, 'help', 'folder', or 'exit' to quit\n")
