@@ -54,7 +54,7 @@ def main():
     download_path = config.get_video_download_path()
     
     while True:
-        url = input(" [?] Video URL from supported sites like Pornhub, xHamster, etc. (or 'exit' to quit): ")
+        url = input(" [?] Video URL from supported sites (or 'exit' to quit): ")
         
         if url.lower() == "exit":
             sys.exit(0)
