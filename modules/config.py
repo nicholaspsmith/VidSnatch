@@ -10,7 +10,7 @@ APP_VERSION = "2.0"
 APP_AUTHOR = "N²"
 
 DEFAULT_BASE_PATH = os.path.expanduser("~/Documents/Torrent")
-DEFAULT_VIDEO_SUBDIR = "pron"
+DEFAULT_VIDEO_SUBDIR = "videos"
 
 REQUIRED_PACKAGES = {
     "yt_dlp": "yt-dlp",
