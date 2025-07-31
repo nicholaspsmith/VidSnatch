@@ -2,26 +2,11 @@
 </p>
 <br />
 <p align="center">
-
-  <h3 align="center">Quikvid-DL</h3>
-
+  <h2 align="center">Quikvid-DL</h3>
   <p align="center">
     A powerful video downloader supporting multiple platforms
-
   </p>
 </p>
-
-
-
-
-### Built With
-
-*On initial launch the script will automatically prompt you to install them*
-* [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-
-## Getting Started
-
-To get a local copy up and running follow these simple steps.
 
 ### Prerequisites
 You need to install Python, that can be done [here](https://www.python.org)
@@ -32,15 +17,20 @@ You need to install Python, that can be done [here](https://www.python.org)
    git clone [your-repository-url]
    ```
 
-2. Run the files
+2. Create a Python virtual environment
+  ```sh
+  python -m venv venv
+  ```
+
+3. Use the virtual environment you just created
+  ```sh
+  source venv/bin/activate
+  ```
+
+4. Run Quikvid-DL
    ```sh
    python main.py
    ```
 
-From there simply say yes to everything the script asks you for (after reading and agreeing of course) and you're set
-
-
-
-
-
-
+### Built With
+* [yt-dlp](https://github.com/yt-dlp/yt-dlp)
