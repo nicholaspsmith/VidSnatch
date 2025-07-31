@@ -1,19 +1,12 @@
 <p align="center">
-<img src=https://img.shields.io/github/stars/logicguy1/PH-DL?style=for-the-badge&logo=appveyor&color=blue />
-<img src=https://img.shields.io/github/forks/logicguy1/PH-DL?style=for-the-badge&logo=appveyor&color=blue />
-<img src=https://img.shields.io/github/issues/logicguy1/PH-DL?style=for-the-badge&logo=appveyor&color=informational />
-<img src=https://img.shields.io/github/issues-pr/logicguy1/PH-DL?style=for-the-badge&logo=appveyor&color=informational />
 </p>
 <br />
 <p align="center">
-  <a href="https://github.com/othneildrew/logicguy1/PH-DL">
-    <img src="assets/logo.png" alt="Logo" width="150" height="150">
-  </a>
 
-  <h3 align="center">PH-DL</h3>
+  <h3 align="center">Quikvid-DL</h3>
 
   <p align="center">
-    The PH Downloader is a powerful script used to download videos
+    A powerful video downloader supporting multiple platforms
 
   </p>
 </p>
@@ -23,8 +16,8 @@
 
 ### Built With
 
-*On inital launch the script will automatically prompt you to install them*
-* [Youtube-Dl](https://github.com/ytdl-org/youtube-dl)
+*On initial launch the script will automatically prompt you to install them*
+* [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 
 ## Getting Started
 
@@ -34,9 +27,9 @@ To get a local copy up and running follow these simple steps.
 You need to install Python, that can be done [here](https://www.python.org)
 
 ### Installation
-1. Clone the repo
+1. Download or clone the repository
    ```sh
-   git clone git@github.com:N²/PH-DL.git
+   git clone [your-repository-url]
    ```
 
 2. Run the files

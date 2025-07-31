@@ -1,4 +1,4 @@
-"""Video downloader using youtube-dl with automatic dependency management."""
+"""Quikvid-DL - Video downloader using yt-dlp with automatic dependency management."""
 
 import os
 import sys
@@ -49,7 +49,7 @@ except ImportError as e:
         traceback.print_exception(*exc_info)
         del exc_info
 
-    input(" [!] Failed loading modules, make sure you cloned all the files from GitHub. Press enter to exit.")
+    input(" [!] Failed loading modules, make sure all files are present. Press enter to exit.")
     sys.exit(1)
 
 def main():

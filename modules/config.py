@@ -1,12 +1,12 @@
-"""Configuration constants for the video downloader application."""
+"""Configuration constants for Quikvid-DL."""
 
 import os
 
-__version__ = "1.1"
+__version__ = "2.0"
 __author__ = "N²"
 
-APP_NAME = "Video Downloader"
-APP_VERSION = "1.1"
+APP_NAME = "Quikvid-DL"
+APP_VERSION = "2.0"
 APP_AUTHOR = "N²"
 
 DEFAULT_BASE_PATH = os.path.expanduser("~/Documents/Torrent")

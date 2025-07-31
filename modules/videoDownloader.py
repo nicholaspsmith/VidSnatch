@@ -1,4 +1,4 @@
-"""Video downloader module using youtube-dl."""
+"""Video downloader module using yt-dlp."""
 
 import os
 import sys
