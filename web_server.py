@@ -46,6 +46,7 @@ class DownloadProgress:
         self.error = None
         self.cancelled = False
         self.process = None
+        self.download_thread = None
         self.start_time = time.time()
 
 class QuikvidHandler(BaseHTTPRequestHandler):
@@ -70,6 +71,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             self.handle_progress_request(download_id)
         elif parsed_path.path == '/current-folder':
             self.handle_current_folder_request()
+        elif parsed_path.path == '/debug':
+            self.handle_debug_request()
         elif parsed_path.path == '/':
             self.send_html_response(self.get_web_interface())
         else:
@@ -88,6 +91,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             self.handle_folder_selection_request()
         elif parsed_path.path == '/open-folder':
             self.handle_open_folder_request()
+        elif parsed_path.path == '/stop-server':
+            self.handle_stop_server_request()
         else:
             self.send_error(404, 'Not Found')
     
@@ -120,22 +125,85 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             progress.cancelled = True
             progress.status = 'cancelled'
             
+            print(f" [!] Cancelling download: {progress.title}")
+            
+            # Try to interrupt the download thread
+            if hasattr(progress, 'download_thread') and progress.download_thread:
+                try:
+                    # The yt-dlp process will check progress.cancelled in the progress hook
+                    print(f" [!] Marking download as cancelled, thread will stop on next progress check")
+                except Exception as e:
+                    print(f" [!] Error interrupting thread: {e}")
+            
             # Try to terminate the process if it exists
-            if progress.process:
+            if hasattr(progress, 'process') and progress.process:
                 try:
                     progress.process.terminate()
                     # Give it a moment to terminate gracefully
                     time.sleep(1)
                     if progress.process.poll() is None:
                         progress.process.kill()
-                except:
-                    pass
+                        print(f" [!] Killed stubborn process for: {progress.title}")
+                except Exception as e:
+                    print(f" [!] Error terminating process: {e}")
             
-            print(f" [!] Download cancelled: {progress.title}")
-            self.send_json_response({'success': True, 'message': 'Download cancelled'})
+            print(f" [!] Download cancellation initiated: {progress.title}")
+            self.send_json_response({'success': True, 'message': 'Download cancellation initiated'})
             
             # Clean up any partial files
             self.cleanup_partial_files(progress)
+    
+    def handle_debug_request(self):
+        """Handle debug requests to show all active downloads."""
+        with download_lock:
+            debug_info = {
+                'active_downloads_count': len(active_downloads),
+                'downloads': []
+            }
+            
+            for download_id, progress in active_downloads.items():
+                download_info = {
+                    'downloadId': download_id,
+                    'title': progress.title,
+                    'url': progress.url,
+                    'status': progress.status,
+                    'percent': progress.percent,
+                    'speed': progress.speed,
+                    'eta': progress.eta,
+                    'error': progress.error,
+                    'cancelled': progress.cancelled,
+                    'has_thread': hasattr(progress, 'download_thread') and progress.download_thread is not None,
+                    'thread_alive': hasattr(progress, 'download_thread') and progress.download_thread and progress.download_thread.is_alive(),
+                    'start_time': progress.start_time,
+                    'runtime_seconds': time.time() - progress.start_time
+                }
+                debug_info['downloads'].append(download_info)
+            
+            self.send_json_response(debug_info)
+    
+    def handle_stop_server_request(self):
+        """Handle server stop requests."""
+        try:
+            print(" [!] Shutdown request received from extension")
+            self.send_json_response({
+                'success': True,
+                'message': 'Server shutdown initiated'
+            })
+            
+            # Schedule server shutdown after sending response
+            def shutdown_server():
+                time.sleep(1)  # Give time for response to be sent
+                print(" [+] Shutting down server...")
+                import os
+                os._exit(0)  # Force exit
+            
+            shutdown_thread = threading.Thread(target=shutdown_server)
+            shutdown_thread.daemon = True
+            shutdown_thread.start()
+            
+        except Exception as e:
+            print(f" [!] Error in stop server request: {e}")
+            self.send_json_response({'error': str(e)}, status=500)
     
     def cleanup_partial_files(self, progress):
         """Clean up partial download files."""
@@ -284,22 +352,103 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             # Ensure download directory exists
             os.makedirs(download_path, exist_ok=True)
             
-            progress.status = 'downloading'
+            progress.status = 'preparing'
+            progress.percent = 5.0
             print(f" [+] Starting download: {progress.title}")
+            print(f" [+] URL: {progress.url}")
             
-            # Create yt-dlp options with progress hook
-            ydl_opts = {
-                'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
-                'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-            }
+            # Store the current thread so we can interrupt it
+            progress.download_thread = threading.current_thread()
             
-            # Download with yt-dlp
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                if progress.cancelled:
-                    return
+            try:
+                print(f" [+] Creating yt-dlp instance...")
+                progress.percent = 10.0
                 
-                progress.status = 'downloading'
-                ydl.extract_info(progress.url, download=True)
+                # Create yt-dlp options with progress hook and anti-detection settings
+                ydl_opts = {
+                    'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
+                    'progress_hooks': [lambda d: self.progress_hook(d, progress)],
+                    'socket_timeout': 180,  # 3 minutes socket timeout for slow CDNs
+                    'retries': 5,  # Retry 5 times on failure
+                    'fragment_retries': 5,  # Retry fragments 5 times
+                    'file_access_retries': 3,  # Retry file access
+                    'verbose': True,  # Add verbose logging
+                    'no_warnings': False,  # Show warnings
+                    
+                    # Anti-detection measures
+                    'sleep_interval_requests': 2,  # Sleep 2 seconds between requests
+                    'sleep_interval_subtitles': 1,  # Sleep 1 second between subtitle requests
+                    'sleep_interval': 1,  # General sleep interval
+                    
+                    # Realistic browser headers to avoid detection
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1',
+                        'Sec-Fetch-Dest': 'document',
+                        'Sec-Fetch-Mode': 'navigate',
+                        'Sec-Fetch-Site': 'none',
+                        'Sec-Fetch-User': '?1',
+                        'Cache-Control': 'max-age=0',
+                        'Referer': progress.url,  # Set referer to the video page
+                    },
+                    
+                    # Cookie handling for session management
+                    'cookiefile': None,  # Don't save cookies to file
+                    'cookiesfrombrowser': None,  # Don't use browser cookies
+                    
+                    # Additional anti-detection
+                    'no_check_certificate': False,  # Verify SSL certificates
+                    'prefer_insecure': False,  # Prefer HTTPS
+                    'geo_bypass': True,  # Try to bypass geo-restrictions
+                    'geo_bypass_country': 'US',  # Pretend to be in US
+                    
+                    # CDN-specific optimizations
+                    'external_downloader_args': {
+                        'default': ['--retry-connrefused', '--retry', '5', '--timeout', '300', '--limit-rate', '1M']
+                    }
+                }
+                
+                print(f" [+] yt-dlp options configured")
+                progress.percent = 15.0
+                
+                print(f" [+] Initializing YoutubeDL instance...")
+                
+                # Download with yt-dlp
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    if progress.cancelled:
+                        print(f" [!] Download cancelled before start: {progress.title}")
+                        return
+                    
+                    print(f" [+] YoutubeDL instance created successfully")
+                    progress.status = 'downloading'
+                    progress.percent = 20.0
+                    
+                    print(f" [+] Starting extract_info for URL: {progress.url}")
+                    
+                    # This is where it might hang - let's add a timeout mechanism
+                    info = ydl.extract_info(progress.url, download=False)  # First just get info
+                    print(f" [+] Successfully extracted video info: {info.get('title', 'Unknown')}")
+                    progress.percent = 50.0
+                    
+                    if progress.cancelled:
+                        print(f" [!] Download cancelled after info extraction: {progress.title}")
+                        return
+                    
+                    print(f" [+] Beginning actual download...")
+                    ydl.extract_info(progress.url, download=True)  # Now actually download
+                    print(f" [+] Download completed successfully: {progress.title}")
+                    
+            except yt_dlp.utils.ExtractorError as e:
+                print(f" [!] Extractor error: {e}")
+                raise
+            except Exception as e:
+                print(f" [!] Unexpected error during download: {e}")
+                print(f" [!] Error type: {type(e).__name__}")
+                raise
             
             if not progress.cancelled:
                 progress.status = 'completed'
@@ -310,17 +459,26 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 if open_folder and sys.platform == 'darwin':
                     videoDownloader.open_finder(download_path)
             
-        except Exception as e:
+        except yt_dlp.DownloadError as e:
+            error_msg = str(e)
+            print(f" [!] yt-dlp Download error: {error_msg}")
             if not progress.cancelled:
                 progress.status = 'error'
-                progress.error = str(e)
-                print(f" [!] Download error: {e}")
+                progress.error = error_msg
+        except Exception as e:
+            error_msg = str(e)
+            print(f" [!] General download error: {error_msg}")
+            if not progress.cancelled:
+                progress.status = 'error'
+                progress.error = error_msg
         finally:
+            print(f" [+] Download thread finished for: {progress.title}")
             # Clean up from active downloads after 5 minutes
             def cleanup():
                 time.sleep(300)  # 5 minutes
                 with download_lock:
                     if progress.download_id in active_downloads:
+                        print(f" [+] Cleaning up download: {progress.download_id}")
                         del active_downloads[progress.download_id]
             
             cleanup_thread = threading.Thread(target=cleanup)

@@ -15,7 +15,7 @@ A Chrome extension that allows you to download videos from any supported site wi
 3. **Start the Local Server:**
    ```bash
    cd /path/to/Quikvid-DL
-   python web_server.py
+   ./start
    ```
 
 ## Usage

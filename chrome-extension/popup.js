@@ -8,15 +8,20 @@ document.addEventListener('DOMContentLoaded', async function() {
   const openFolderToggle = document.getElementById('openFolderToggle');
   const folderPath = document.getElementById('folderPath');
   const openFolderBtn = document.getElementById('openFolderBtn');
+  const serverStatus = document.getElementById('serverStatus');
+  const serverStatusText = document.getElementById('serverStatusText');
+  const stopServerBtn = document.getElementById('stopServerBtn');
   
   let currentVideoInfo = null;
   let activeDownloads = new Map(); // downloadId -> download object
   let progressInterval = null;
   let openFolderEnabled = true;
   let folderSelectionInProgress = false;
+  let serverOnline = false;
   
   // Load settings and check for active downloads
   await loadSettings();
+  await checkServerStatus();
   await loadCurrentFolderPath();
   await checkForActiveDownloads();
   
@@ -90,6 +95,66 @@ document.addEventListener('DOMContentLoaded', async function() {
       await chrome.storage.local.set({ openFolderEnabled });
     } catch (error) {
       console.error('Error saving settings:', error);
+    }
+  }
+  
+  async function checkServerStatus() {
+    try {
+      const response = await fetch('http://localhost:8080/status', {
+        method: 'GET',
+        timeout: 3000
+      });
+      
+      if (response.ok) {
+        serverOnline = true;
+        updateServerStatus(true);
+      } else {
+        serverOnline = false;
+        updateServerStatus(false);
+      }
+    } catch (error) {
+      serverOnline = false;
+      updateServerStatus(false);
+    }
+  }
+  
+  function updateServerStatus(online) {
+    serverOnline = online;
+    
+    if (online) {
+      serverStatus.className = 'server-status online';
+      serverStatusText.textContent = 'Server running on port 8080';
+      stopServerBtn.disabled = false;
+      downloadBtn.disabled = !currentVideoInfo || !(currentVideoInfo.isVideoSite || currentVideoInfo.hasVideoElements || currentVideoInfo.hasVideoKeywords);
+    } else {
+      serverStatus.className = 'server-status offline';
+      serverStatusText.textContent = 'Server not running - run: ./start';
+      stopServerBtn.disabled = true;
+      downloadBtn.disabled = true;
+    }
+  }
+  
+  
+  async function stopServer() {
+    try {
+      stopServerBtn.disabled = true;
+      serverStatusText.textContent = 'Stopping server...';
+      showStatus('Stopping Quikvid-DL server...', 'info');
+      
+      const response = await fetch('http://localhost:8080/stop-server', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        showStatus('✅ Server stopped successfully!', 'success');
+        updateServerStatus(false);
+      } else {
+        throw new Error('Failed to stop server');
+      }
+    } catch (error) {
+      console.error('Error stopping server:', error);
+      showStatus('❌ Failed to stop server. Please stop manually.', 'error');
+      stopServerBtn.disabled = false;
     }
   }
   
@@ -554,6 +619,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   settingsBtn.addEventListener('click', function() {
     chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id });
   });
+  
+  // Server control button handler
+  stopServerBtn.addEventListener('click', stopServer);
   
   // Initialize
   await getCurrentTabInfo();

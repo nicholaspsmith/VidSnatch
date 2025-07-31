@@ -11,6 +11,15 @@ import modules.folderSelector as folderSelector
 
 utilities.clear()
 
+# Display the VidSnatch logo with Mercury symbolism
+try:
+    import modules.logo as logo
+    logo.print_startup_logo()
+except ImportError:
+    print(" VidSnatch - Fast Video Downloader")
+    print(" Mercury's Swift Touch")
+    print("")
+
 # Check if this is first run or no download path is set
 if settings.is_first_run() or not settings.get_download_path():
     selected_folder = folderSelector.prompt_for_download_folder()

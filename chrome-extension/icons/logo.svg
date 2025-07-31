@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1976d2;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#2196f3;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4caf50;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Mercury-inspired logo: Three interlaced crescents forming the Mercury symbol -->
+  <!-- The design subtly creates the Mercury planetary symbol (☿) through geometric harmony -->
+  
+  <!-- Top crescent - represents the "horns" of Mercury -->
+  <path d="M 64 20 A 22 22 0 0 1 42 42 A 18 18 0 0 0 64 38 A 18 18 0 0 0 86 42 A 22 22 0 0 1 64 20 Z" 
+        fill="url(#grad1)" opacity="0.9" stroke="#1565c0" stroke-width="1.5"/>
+  
+  <!-- Central circle - the core of Mercury -->
+  <circle cx="64" cy="58" r="20" fill="none" stroke="url(#grad1)" stroke-width="3" opacity="0.8"/>
+  
+  <!-- Left crescent - interlaces with center -->
+  <path d="M 35 58 A 20 20 0 0 1 55 38 A 16 16 0 0 0 39 54 A 16 16 0 0 0 55 70 A 20 20 0 0 1 35 58 Z" 
+        fill="url(#grad1)" opacity="0.7" stroke="#1565c0" stroke-width="1.5"/>
+  
+  <!-- Right crescent - completes the triad -->
+  <path d="M 93 58 A 20 20 0 0 0 73 38 A 16 16 0 0 1 89 54 A 16 16 0 0 1 73 70 A 20 20 0 0 0 93 58 Z" 
+        fill="url(#grad1)" opacity="0.7" stroke="#1565c0" stroke-width="1.5"/>
+  
+  <!-- Bottom vertical element - completes Mercury symbol subtly -->
+  <rect x="62" y="78" width="4" height="16" fill="url(#grad1)" opacity="0.6" rx="2"/>
+  
+  <!-- Cross element at bottom - Mercury's cross -->
+  <rect x="56" y="92" width="16" height="3" fill="url(#grad1)" opacity="0.6" rx="1.5"/>
+  
+  <!-- Subtle geometric lines that enhance the Mercury symbolism -->
+  <line x1="44" y1="44" x2="84" y2="72" stroke="url(#grad1)" stroke-width="1" opacity="0.3"/>
+  <line x1="84" y1="44" x2="44" y2="72" stroke="url(#grad1)" stroke-width="1" opacity="0.3"/>
+  
+</svg>

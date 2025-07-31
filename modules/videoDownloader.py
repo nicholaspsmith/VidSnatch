@@ -14,7 +14,24 @@ import modules.folderSelector as folderSelector
 def download_video(url, download_path):
     """Download a video from the given URL."""
     ydl_opts = {
-        'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE)
+        'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
+        'socket_timeout': 180,  # 3 minutes socket timeout for slow CDNs
+        'retries': 5,  # Retry 5 times on failure  
+        'fragment_retries': 5,  # Retry fragments 5 times
+        'file_access_retries': 3,  # Retry file access
+        # Add headers to improve CDN compatibility
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        },
+        # CDN-specific optimizations  
+        'external_downloader_args': {
+            'default': ['--retry-connrefused', '--retry', '5', '--timeout', '300']
+        }
     }
     
     try:

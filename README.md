@@ -21,24 +21,30 @@
 
 ---
 
-## 🚀 Quick Start - Choose Your Style!
+## 🚀 Super Simple Setup
 
-### 🖱️ Option 1: Chrome Extension (Recommended for Most Users)
-
-**Perfect for:** Casual users who want the easiest experience
+**One-Command Setup:** VidSnatch automatically handles virtual environments!
 
 ```bash
-# 1. Download and setup
+# 1. Download VidSnatch
 git clone https://github.com/nicholaspsmith/VidSnatch.git
 cd VidSnatch
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# 2. Start the server
-python server_only.py
+# 2. Choose your style - that's it! (No manual venv setup needed)
 ```
 
-**3. Install Chrome Extension:**
+### 🖱️ Option 1: Chrome Extension (Recommended)
+
+**Auto-setup + Start Server:**
+```bash
+./start           # macOS/Linux
+start.bat         # Windows
+
+# OR use the universal method:
+python setup.py server_only.py
+```
+
+**Install Chrome Extension:**
 1. Open Chrome → `chrome://extensions/`
 2. Enable **"Developer mode"** (top-right toggle)
 3. Click **"Load unpacked"** 
@@ -47,17 +53,43 @@ python server_only.py
 
 ### 💻 Option 2: Command Line Interface
 
-**Perfect for:** Developers and power users
-
+**Auto-setup + Start CLI:**
 ```bash
-# 1. Download and setup  
-git clone https://github.com/nicholaspsmith/VidSnatch.git
-cd VidSnatch
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+./cli             # macOS/Linux  
+cli.bat           # Windows
 
-# 2. Run CLI version
-python main.py
+# OR use the universal method:
+python setup.py main.py
+```
+
+### 🔄 Option 3: Both CLI + Extension Server
+
+**Auto-setup + Start Both:**
+```bash
+./start           # macOS/Linux
+start.bat         # Windows
+
+# OR use the universal method:
+python setup.py start_with_server.py
+```
+
+## 🛠️ How It Works
+
+VidSnatch uses a **setup.py** script that automatically:
+- ✅ Detects if you're in a virtual environment  
+- ✅ Creates one if missing (`venv/`)
+- ✅ Installs dependencies from `requirements.txt`
+- ✅ Starts the requested component
+
+**Available Scripts:**
+```bash
+# Quick scripts (cross-platform)
+./start     # CLI + Server
+./server    # Server only
+./cli       # CLI only
+
+# Universal method (any OS)
+python setup.py <script_name>
 ```
 
 ---

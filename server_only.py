@@ -7,6 +7,16 @@ import modules.config as config
 
 # Clear screen and check dependencies like main.py
 utilities.clear()
+
+# Display the VidSnatch logo
+try:
+    import modules.logo as logo
+    logo.print_startup_logo()
+except ImportError:
+    print(" VidSnatch - Fast Video Downloader")
+    print(" Mercury's Swift Touch")
+    print("")
+
 print(" [+] Starting VidSnatch Web Server for Chrome Extension")
 
 # Check if download path is configured

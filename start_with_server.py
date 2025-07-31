@@ -13,8 +13,17 @@ def signal_handler(signum, frame):
 
 def main():
     """Main function to start both server and CLI application."""
+    # Display the VidSnatch logo
+    try:
+        import modules.logo as logo
+        logo.print_startup_logo()
+    except ImportError:
+        print(" VidSnatch - Fast Video Downloader")
+        print(" Mercury's Swift Touch")
+        print("")
+    
     print(" [+] Starting VidSnatch with Chrome Extension Support")
-    print(" [+] =" * 50)
+    print(" [+] " + "=" * 50)
     
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)

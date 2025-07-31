@@ -1,0 +1,5 @@
+#!/bin/bash
+# VidSnatch CLI-Only Script (Unix/macOS/Linux)
+# Equivalent to "npm run cli" - starts only the command-line interface
+
+python3 setup.py main.py

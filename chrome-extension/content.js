@@ -12,7 +12,8 @@
       'youtube.com', 'youtu.be', 'tiktok.com', 'instagram.com',
       'facebook.com', 'twitter.com', 'x.com', 'twitch.tv',
       'vimeo.com', 'dailymotion.com', 'soundcloud.com',
-      'reddit.com', '9gag.com', 'bilibili.com', 'pinterest.com'
+      'reddit.com', '9gag.com', 'bilibili.com', 'pinterest.com',
+      'porntrex.com'
     ];
     
     // Check if current site is in supported list

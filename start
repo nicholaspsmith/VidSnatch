@@ -1,0 +1,5 @@
+#!/bin/bash
+# VidSnatch Quick Start Script (Unix/macOS/Linux)
+# Equivalent to "npm start" - automatically handles venv and starts CLI + server
+
+python3 setup.py start_with_server.py
