@@ -6,14 +6,17 @@ document.addEventListener('DOMContentLoaded', async function() {
   const currentUrlDiv = document.getElementById('currentUrl');
   const downloadsContainer = document.getElementById('downloadsContainer');
   const openFolderToggle = document.getElementById('openFolderToggle');
+  const folderPath = document.getElementById('folderPath');
   
   let currentVideoInfo = null;
   let activeDownloads = new Map(); // downloadId -> download object
   let progressInterval = null;
   let openFolderEnabled = true;
+  let folderSelectionInProgress = false;
   
   // Load settings and check for active downloads
   await loadSettings();
+  await loadCurrentFolderPath();
   await checkForActiveDownloads();
   
   // Get current tab and video info
@@ -42,6 +45,42 @@ document.addEventListener('DOMContentLoaded', async function() {
       updateToggleUI();
     } catch (error) {
       console.error('Error loading settings:', error);
+    }
+  }
+  
+  async function loadCurrentFolderPath() {
+    try {
+      const response = await fetch('http://localhost:8080/current-folder');
+      if (response.ok) {
+        const data = await response.json();
+        updateFolderPathDisplay(data.path);
+      } else {
+        folderPath.textContent = 'Unable to load folder path';
+      }
+    } catch (error) {
+      console.error('Error loading folder path:', error);
+      folderPath.textContent = 'Server not running';
+    }
+  }
+  
+  function updateFolderPathDisplay(path) {
+    if (path) {
+      // Show shortened path for better display
+      const maxLen = 40;
+      let displayPath = path;
+      
+      if (displayPath.length > maxLen) {
+        // Show beginning and end of path
+        const start = displayPath.substring(0, 15);
+        const end = displayPath.substring(displayPath.length - 20);
+        displayPath = `${start}...${end}`;
+      }
+      
+      folderPath.textContent = displayPath;
+      folderPath.title = `Click to change download folder\nCurrent: ${path}`;
+    } else {
+      folderPath.textContent = 'No folder set';
+      folderPath.title = 'Click to set download folder';
     }
   }
   
@@ -245,7 +284,7 @@ document.addEventListener('DOMContentLoaded', async function() {
               chrome.notifications.create({
                 type: 'basic',
                 iconUrl: 'icons/icon48.png',
-                title: 'Quikvid-DL',
+                title: 'VidSnatch',
                 message: 'Video download completed!'
               });
             } catch (e) {
@@ -420,6 +459,63 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     const status = openFolderEnabled ? 'enabled' : 'disabled';
     showStatus(`Folder opening ${status}`, 'info');
+  });
+  
+  // Folder path click handler with debounce
+  folderPath.addEventListener('click', async function() {
+    // Prevent multiple simultaneous folder selections
+    if (folderSelectionInProgress) {
+      console.log('Folder selection already in progress, ignoring click');
+      return;
+    }
+    
+    try {
+      folderSelectionInProgress = true;
+      
+      // Visual feedback - disable and show loading state
+      folderPath.style.pointerEvents = 'none';
+      folderPath.style.opacity = '0.6';
+      folderPath.textContent = 'Opening folder selector...';
+      folderPath.title = 'Please wait...';
+      
+      showStatus('Opening folder selector...', 'info');
+      
+      const response = await fetch('http://localhost:8080/select-folder', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.path) {
+          updateFolderPathDisplay(result.path);
+          showStatus('✅ Download folder updated!', 'success');
+        } else if (result.cancelled) {
+          showStatus('Folder selection cancelled', 'info');
+          // Reload the original path since user cancelled
+          await loadCurrentFolderPath();
+        } else {
+          showStatus('❌ Failed to change folder', 'error');
+          // Reload the original path on error
+          await loadCurrentFolderPath();
+        }
+      } else {
+        showStatus('❌ Server error changing folder', 'error');
+        // Reload the original path on error
+        await loadCurrentFolderPath();
+      }
+    } catch (error) {
+      console.error('Error changing folder:', error);
+      showStatus('❌ Error opening folder selector', 'error');
+      // Reload the original path on error
+      await loadCurrentFolderPath();
+    } finally {
+      // Re-enable the folder path click after a short delay
+      setTimeout(() => {
+        folderSelectionInProgress = false;
+        folderPath.style.pointerEvents = 'auto';
+        folderPath.style.opacity = '1';
+      }, 500); // 500ms delay to prevent rapid clicking
+    }
   });
   
   // Settings button click handler

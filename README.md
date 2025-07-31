@@ -1,39 +1,70 @@
 <p align="center">
-</p>
-<br />
-<p align="center">
-  <h2 align="center">Quikvid-DL</h3>
+  <h1 align="center">🎬 VidSnatch</h1>
   <p align="center">
-    A powerful video downloader supporting multiple platforms
+    <strong>2 Ways to Download Videos from 1000+ Sites!</strong>
+  </p>
+  <p align="center">
+    YouTube • TikTok • Instagram • Facebook • Twitter • Twitch • And Many More!
   </p>
 </p>
 
-### Prerequisites
-You need to install Python, that can be done [here](https://www.python.org/downloads/)
+<div align="center">
 
-### Installation
-1. Download or clone the repository
-   ```sh
-   git clone https://github.com/nicholaspsmith/Quickvid-DL.git
-   ```
+| 🖱️ **Chrome Extension** | 💻 **Command Line** |
+|-------------------------|---------------------|
+| One-click downloads | Copy/paste URLs |
+| Real-time progress bars | Terminal interface |
+| Multiple simultaneous downloads | Single downloads |
+| Visual interface | Developer-friendly |
 
-2. Create a Python virtual environment
-  ```sh
-  python -m venv venv
-  ```
+</div>
 
-3. Use the virtual environment you just created
-  ```sh
-  source venv/bin/activate
-  ```
+---
 
-4. Run Quikvid-DL
-   ```sh
-   python main.py
-   ```
+## 🚀 Quick Start - Choose Your Style!
 
-### Built With
-* [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+### 🖱️ Option 1: Chrome Extension (Recommended for Most Users)
+
+**Perfect for:** Casual users who want the easiest experience
+
+```bash
+# 1. Download and setup
+git clone https://github.com/nicholaspsmith/VidSnatch.git
+cd VidSnatch
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 2. Start the server
+python server_only.py
+```
+
+**3. Install Chrome Extension:**
+1. Open Chrome → `chrome://extensions/`
+2. Enable **"Developer mode"** (top-right toggle)
+3. Click **"Load unpacked"** 
+4. Select the `chrome-extension` folder
+5. Start downloading! 🎉
+
+### 💻 Option 2: Command Line Interface
+
+**Perfect for:** Developers and power users
+
+```bash
+# 1. Download and setup  
+git clone https://github.com/nicholaspsmith/VidSnatch.git
+cd VidSnatch
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 2. Run CLI version
+python main.py
+```
+
+---
+
+## 📋 Prerequisites
+- **Python 3.7+** - Download from [python.org](https://www.python.org/downloads/)
+- **Chrome Browser** (for extension option)
 
 ## Supported Sites
 
@@ -61,6 +92,88 @@ Quikvid-DL supports downloading from 1000+ sites through yt-dlp. Here are the to
 20. **XVIDEOS** - Adult content platform
 
 *Note: Not all sites are guaranteed to work as websites constantly change. The complete list of supported extractors can be found in the [yt-dlp documentation](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).*
+
+## 🖱️ Chrome Extension Deep Dive
+
+### ✨ Why Choose the Chrome Extension?
+
+- **🎯 Zero Learning Curve** - If you can click a button, you can download videos
+- **⚡ Instant Downloads** - No copying URLs or switching windows
+- **📊 Beautiful Progress** - Watch your downloads with real-time progress bars
+- **🔄 Multitasking Master** - Download multiple videos simultaneously
+- **💾 Smart Resume** - Close the popup, downloads continue in background
+- **📁 Folder Control** - Click to change download location anytime
+
+### 🎬 How to Use the Extension
+
+1. **Navigate** to any video site (YouTube, TikTok, etc.)
+2. **Click** the VidSnatch extension icon in your Chrome toolbar
+3. **Hit** the "📹 Download Video" button
+4. **Watch** the progress bar fill up in real-time
+5. **Enjoy** your downloaded video!
+
+### 📡 Technical Overview
+
+- **Local Server** - Python server runs on `http://localhost:8080`
+- **Real-Time Communication** - Extension polls server for progress updates
+- **Background Processing** - Downloads continue even if you close the popup
+- **Cross-Platform** - Works on Windows, macOS, and Linux
+
+## 💻 Command Line Deep Dive
+
+### ✨ Why Choose CLI?
+
+- **🔧 Developer Friendly** - Perfect for automation and scripting
+- **🎯 Direct Control** - Full access to all yt-dlp features
+- **💾 Lightweight** - No browser required
+- **🔄 Batch Processing** - Easy to integrate into workflows
+
+### 🛠️ Available Commands
+
+```bash
+# CLI only (no Chrome extension support)
+python main.py
+
+# Start server only (for Chrome extension)  
+python server_only.py
+
+# Start both server + CLI interface
+python start_with_server.py
+```
+
+### ⚙️ CLI Features
+
+- **📁 Folder Selection** - First run opens native folder picker
+- **❓ Help System** - Type `help` for supported sites list
+- **⚙️ Settings** - Type `folder` to change download location
+- **🚪 Easy Exit** - Type `exit` to quit gracefully
+
+### 🐛 Troubleshooting
+
+**Extension shows "Server not running":**
+- Make sure you started the server: `python server_only.py`
+- Check if port 8080 is free: `lsof -i :8080`
+
+**Downloads not working:**
+- Verify the site is supported (see list above)
+- Check server console for error messages
+- Try refreshing the page and clicking extension again
+
+**Extension not loading:**
+- Make sure Developer mode is enabled in `chrome://extensions/`
+- Check for any error messages in the extension details
+- Try reloading the extension
+
+### 🎉 Why Use the Chrome Extension?
+
+| Feature | CLI Only | Chrome Extension |
+|---------|----------|------------------|
+| Ease of Use | ❌ Copy/paste URLs | ✅ One-click downloads |
+| Multiple Downloads | ❌ One at a time | ✅ Unlimited simultaneous |
+| Progress Tracking | ❌ Terminal only | ✅ Visual progress bars |
+| Background Downloads | ❌ Blocks terminal | ✅ Runs in background |
+| Site Integration | ❌ Manual URL copying | ✅ Auto-detects videos |
+| User Experience | ❌ Command line | ✅ Beautiful popup interface |
 
 ## Credit
 Created from a fork of [PH-DL](https://github.com/logicguy1/PH-DL)

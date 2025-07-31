@@ -7,7 +7,7 @@ import modules.config as config
 
 # Clear screen and check dependencies like main.py
 utilities.clear()
-print(" [+] Starting Quikvid-DL Web Server for Chrome Extension")
+print(" [+] Starting VidSnatch Web Server for Chrome Extension")
 
 # Check if download path is configured
 video_downloads_path = config.get_video_download_path()
@@ -53,7 +53,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     
     print("\n" + "=" * 60)
-    print(" [+] Quikvid-DL Web Server - Chrome Extension Ready")
+    print(" [+] VidSnatch Web Server - Chrome Extension Ready")
     print(" [+] Server URL: http://localhost:8080")
     print(" [+] Status Page: http://localhost:8080/")
     print(" [+] Press Ctrl+C to stop")

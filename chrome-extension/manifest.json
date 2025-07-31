@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Quikvid-DL Extension",
+  "name": "VidSnatch Extension",
   "version": "1.0",
   "description": "Download videos from any supported site with one click",
   "permissions": [

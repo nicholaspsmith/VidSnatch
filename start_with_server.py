@@ -13,7 +13,7 @@ def signal_handler(signum, frame):
 
 def main():
     """Main function to start both server and CLI application."""
-    print(" [+] Starting Quikvid-DL with Chrome Extension Support")
+    print(" [+] Starting VidSnatch with Chrome Extension Support")
     print(" [+] =" * 50)
     
     # Register signal handler for graceful shutdown

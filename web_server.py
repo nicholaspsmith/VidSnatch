@@ -68,6 +68,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/progress/'):
             download_id = parsed_path.path.split('/')[-1]
             self.handle_progress_request(download_id)
+        elif parsed_path.path == '/current-folder':
+            self.handle_current_folder_request()
         elif parsed_path.path == '/':
             self.send_html_response(self.get_web_interface())
         else:
@@ -82,6 +84,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/cancel/'):
             download_id = parsed_path.path.split('/')[-1]
             self.handle_cancel_request(download_id)
+        elif parsed_path.path == '/select-folder':
+            self.handle_folder_selection_request()
         else:
             self.send_error(404, 'Not Found')
     
@@ -148,6 +152,45 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             pass
         except Exception as e:
             print(f" [!] Error cleaning up files: {e}")
+    
+    def handle_current_folder_request(self):
+        """Handle request for current download folder."""
+        try:
+            current_path = config.get_video_download_path()
+            self.send_json_response({
+                'success': True,
+                'path': current_path
+            })
+        except Exception as e:
+            print(f" [!] Error getting current folder: {e}")
+            self.send_json_response({'error': str(e)}, status=500)
+    
+    def handle_folder_selection_request(self):
+        """Handle folder selection request."""
+        try:
+            import modules.folderSelector as folderSelector
+            import modules.settings as settings
+            
+            print(" [+] Opening folder selection dialog...")
+            selected_folder = folderSelector.select_download_folder()
+            
+            if selected_folder:
+                settings.set_download_path(selected_folder)
+                print(f" [+] Download folder changed to: {selected_folder}")
+                self.send_json_response({
+                    'success': True,
+                    'path': selected_folder
+                })
+            else:
+                print(" [!] Folder selection cancelled")
+                self.send_json_response({
+                    'success': False,
+                    'cancelled': True
+                })
+                
+        except Exception as e:
+            print(f" [!] Error in folder selection: {e}")
+            self.send_json_response({'error': str(e)}, status=500)
     
     def handle_download_request(self):
         """Handle download requests from Chrome extension."""
@@ -314,7 +357,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             </style>
         </head>
         <body>
-            <h1>🎬 Quikvid-DL Server Enhanced</h1>
+            <h1>🎬 VidSnatch Server Enhanced</h1>
             <div class="status">
                 <strong>✅ Server Status:</strong> Running on http://localhost:8080<br>
                 <strong>📊 Active Downloads:</strong> {active_count}
@@ -360,7 +403,7 @@ def start_server(port=8080):
     server_address = ('localhost', port)
     httpd = HTTPServer(server_address, QuikvidHandler)
     
-    print(f" [+] Starting Enhanced Quikvid-DL Server on http://localhost:{port}")
+    print(f" [+] Starting Enhanced VidSnatch Server on http://localhost:{port}")
     print(f" [+] Features: Progress tracking, cancellation, folder control")
     print(f" [+] Chrome extension ready for enhanced downloads")
     print(f" [+] Press Ctrl+C to stop the server")
