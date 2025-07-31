@@ -9,7 +9,7 @@
 </p>
 
 ### Prerequisites
-You need to install Python, that can be done [here](https://www.python.org)
+You need to install Python, that can be done [here](https://www.python.org/downloads/)
 
 ### Installation
 1. Download or clone the repository
