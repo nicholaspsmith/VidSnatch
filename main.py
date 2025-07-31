@@ -26,7 +26,7 @@ print("\n [+] Checking required packages")
 
 while True:
     try:
-        import youtube_dl  # noqa: F401
+        import yt_dlp  # noqa: F401
         print(" [+] All required packages are installed")
         break
     except ImportError as e:

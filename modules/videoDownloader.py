@@ -4,7 +4,7 @@ import os
 import sys
 import subprocess
 
-import youtube_dl
+import yt_dlp
 
 import modules.utilities as utilities
 import modules.config as config
@@ -16,10 +16,10 @@ def download_video(url, download_path):
     }
     
     try:
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.extract_info(url, download=True)
         return True
-    except youtube_dl.DownloadError as e:
+    except yt_dlp.DownloadError as e:
         handle_download_error(e)
         return False
     except Exception as e:
@@ -54,7 +54,7 @@ def main():
     download_path = config.get_video_download_path()
     
     while True:
-        url = input(" [?] Video URL (or 'exit' to quit): ")
+        url = input(" [?] Video URL from supported sites like Pornhub, xHamster, etc. (or 'exit' to quit): ")
         
         if url.lower() == "exit":
             sys.exit(0)

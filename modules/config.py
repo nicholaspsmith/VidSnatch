@@ -13,7 +13,7 @@ DEFAULT_BASE_PATH = os.path.expanduser("~/Documents/Torrent")
 DEFAULT_VIDEO_SUBDIR = "pron"
 
 REQUIRED_PACKAGES = {
-    "youtube_dl": "youtube_dl",
+    "yt_dlp": "yt-dlp",
 }
 
 DEFAULT_OUTPUT_TEMPLATE = "%(uploader)s - %(title)s - %(id)s.%(ext)s"
