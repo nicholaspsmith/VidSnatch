@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const downloadsContainer = document.getElementById('downloadsContainer');
   const openFolderToggle = document.getElementById('openFolderToggle');
   const folderPath = document.getElementById('folderPath');
+  const openFolderBtn = document.getElementById('openFolderBtn');
   
   let currentVideoInfo = null;
   let activeDownloads = new Map(); // downloadId -> download object
@@ -515,6 +516,37 @@ document.addEventListener('DOMContentLoaded', async function() {
         folderPath.style.pointerEvents = 'auto';
         folderPath.style.opacity = '1';
       }, 500); // 500ms delay to prevent rapid clicking
+    }
+  });
+  
+  // Open folder button click handler
+  openFolderBtn.addEventListener('click', async function() {
+    try {
+      openFolderBtn.disabled = true;
+      showStatus('Opening download folder...', 'info');
+      
+      const response = await fetch('http://localhost:8080/open-folder', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          showStatus('✅ Folder opened!', 'success');
+        } else {
+          showStatus('❌ Failed to open folder', 'error');
+        }
+      } else {
+        showStatus('❌ Server error opening folder', 'error');
+      }
+    } catch (error) {
+      console.error('Error opening folder:', error);
+      showStatus('❌ Error opening folder', 'error');
+    } finally {
+      // Re-enable button after short delay
+      setTimeout(() => {
+        openFolderBtn.disabled = false;
+      }, 1000);
     }
   });
   

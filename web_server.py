@@ -86,6 +86,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             self.handle_cancel_request(download_id)
         elif parsed_path.path == '/select-folder':
             self.handle_folder_selection_request()
+        elif parsed_path.path == '/open-folder':
+            self.handle_open_folder_request()
         else:
             self.send_error(404, 'Not Found')
     
@@ -191,6 +193,35 @@ class QuikvidHandler(BaseHTTPRequestHandler):
         except Exception as e:
             print(f" [!] Error in folder selection: {e}")
             self.send_json_response({'error': str(e)}, status=500)
+    
+    def handle_open_folder_request(self):
+        """Handle request to open the download folder."""
+        try:
+            download_path = config.get_video_download_path()
+            
+            print(f" [+] Opening download folder: {download_path}")
+            
+            # Open folder using system-specific command
+            if sys.platform == 'darwin':  # macOS
+                subprocess.run(['open', download_path], check=True)
+            elif sys.platform == 'win32':  # Windows
+                subprocess.run(['explorer', download_path], check=True)
+            else:  # Linux and other Unix-like systems
+                subprocess.run(['xdg-open', download_path], check=True)
+            
+            self.send_json_response({
+                'success': True,
+                'message': 'Folder opened successfully'
+            })
+            
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Failed to open folder: {e}"
+            print(f" [!] {error_msg}")
+            self.send_json_response({'error': error_msg}, status=500)
+        except Exception as e:
+            error_msg = f"Error opening folder: {e}"
+            print(f" [!] {error_msg}")
+            self.send_json_response({'error': error_msg}, status=500)
     
     def handle_download_request(self):
         """Handle download requests from Chrome extension."""
