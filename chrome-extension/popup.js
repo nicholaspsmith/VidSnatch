@@ -1,0 +1,432 @@
+// Multi-download popup JavaScript with progress tracking
+document.addEventListener('DOMContentLoaded', async function() {
+  const downloadBtn = document.getElementById('downloadBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const statusDiv = document.getElementById('status');
+  const currentUrlDiv = document.getElementById('currentUrl');
+  const downloadsContainer = document.getElementById('downloadsContainer');
+  const openFolderToggle = document.getElementById('openFolderToggle');
+  
+  let currentVideoInfo = null;
+  let activeDownloads = new Map(); // downloadId -> download object
+  let progressInterval = null;
+  let openFolderEnabled = true;
+  
+  // Load settings and check for active downloads
+  await loadSettings();
+  await checkForActiveDownloads();
+  
+  // Get current tab and video info
+  async function getCurrentTabInfo() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      // Send message to content script to get video info
+      const videoInfo = await chrome.tabs.sendMessage(tab.id, { action: 'getVideoInfo' });
+      
+      currentVideoInfo = videoInfo;
+      updateUI(videoInfo);
+      
+    } catch (error) {
+      console.error('Error getting tab info:', error);
+      showStatus('Error: Cannot access this page', 'error');
+      currentUrlDiv.textContent = 'Cannot access current page';
+      downloadBtn.disabled = true;
+    }
+  }
+  
+  async function loadSettings() {
+    try {
+      const result = await chrome.storage.local.get(['openFolderEnabled']);
+      openFolderEnabled = result.openFolderEnabled !== false; // Default to true
+      updateToggleUI();
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  }
+  
+  async function saveSettings() {
+    try {
+      await chrome.storage.local.set({ openFolderEnabled });
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    }
+  }
+  
+  async function saveActiveDownloads() {
+    try {
+      const downloadsArray = Array.from(activeDownloads.entries()).map(([id, download]) => ({
+        downloadId: id,
+        videoInfo: download.videoInfo,
+        timestamp: download.timestamp
+      }));
+      console.log('Saving active downloads:', downloadsArray);
+      await chrome.storage.local.set({ activeDownloads: downloadsArray });
+    } catch (error) {
+      console.error('Error saving active downloads:', error);
+    }
+  }
+  
+  async function loadActiveDownloads() {
+    try {
+      const result = await chrome.storage.local.get(['activeDownloads']);
+      const downloadsArray = result.activeDownloads || [];
+      console.log('Loaded active downloads:', downloadsArray);
+      
+      activeDownloads.clear();
+      downloadsArray.forEach(download => {
+        activeDownloads.set(download.downloadId, {
+          downloadId: download.downloadId,
+          videoInfo: download.videoInfo,
+          timestamp: download.timestamp
+        });
+      });
+    } catch (error) {
+      console.error('Error loading active downloads:', error);
+    }
+  }
+  
+  function createDownloadElement(downloadId, videoInfo) {
+    const downloadItem = document.createElement('div');
+    downloadItem.className = 'download-item';
+    downloadItem.id = `download-${downloadId}`;
+    
+    const title = videoInfo.videoTitle || videoInfo.title || 'Unknown Video';
+    const shortTitle = title.length > 50 ? title.substring(0, 50) + '...' : title;
+    
+    downloadItem.innerHTML = `
+      <div class="download-title" title="${title}">${shortTitle}</div>
+      <div class="progress-text">Preparing download...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="download-actions">
+        <button class="cancel-btn" onclick="cancelDownload('${downloadId}')">
+          ❌ Cancel
+        </button>
+      </div>
+    `;
+    
+    return downloadItem;
+  }
+  
+  function addDownloadToUI(downloadId, videoInfo) {
+    const downloadElement = createDownloadElement(downloadId, videoInfo);
+    downloadsContainer.appendChild(downloadElement);
+    return downloadElement;
+  }
+  
+  function updateDownloadProgress(downloadId, percent, status, speed = '', eta = '') {
+    const downloadElement = document.getElementById(`download-${downloadId}`);
+    if (!downloadElement) return;
+    
+    const progressFill = downloadElement.querySelector('.progress-fill');
+    const progressText = downloadElement.querySelector('.progress-text');
+    
+    progressFill.style.width = `${percent}%`;
+    
+    let text = `${status} - ${percent.toFixed(1)}%`;
+    if (speed) text += ` (${speed})`;
+    if (eta) text += ` ETA: ${eta}`;
+    progressText.textContent = text;
+  }
+  
+  function removeDownloadFromUI(downloadId) {
+    const downloadElement = document.getElementById(`download-${downloadId}`);
+    if (downloadElement) {
+      downloadElement.remove();
+    }
+  }
+  
+  function markDownloadComplete(downloadId, status) {
+    const downloadElement = document.getElementById(`download-${downloadId}`);
+    if (!downloadElement) return;
+    
+    // Update visual state
+    if (status === 'completed') {
+      downloadElement.classList.add('download-completed');
+      downloadElement.querySelector('.progress-text').textContent = 'Download completed!';
+    } else if (status === 'error') {
+      downloadElement.classList.add('download-error');
+    } else if (status === 'cancelled') {
+      downloadElement.classList.add('download-cancelled');
+    }
+    
+    // Remove cancel button
+    const actions = downloadElement.querySelector('.download-actions');
+    actions.innerHTML = `<div style="text-align: center; font-size: 11px; color: #666;">
+      ${status === 'completed' ? '✅ Completed' : status === 'error' ? '❌ Failed' : '⚠️ Cancelled'}
+    </div>`;
+    
+    // Auto-remove after delay
+    setTimeout(() => {
+      removeDownloadFromUI(downloadId);
+    }, 5000);
+  }
+  
+  async function checkForActiveDownloads() {
+    console.log('Checking for active downloads...');
+    await loadActiveDownloads();
+    
+    if (activeDownloads.size === 0) {
+      console.log('No stored downloads found');
+      return;
+    }
+    
+    console.log('Found stored downloads:', activeDownloads);
+    
+    // Check each stored download with server
+    for (const [downloadId, download] of activeDownloads) {
+      try {
+        const response = await fetch(`http://localhost:8080/progress/${downloadId}`);
+        
+        if (response.ok) {
+          const progress = await response.json();
+          console.log(`Server progress for ${downloadId}:`, progress);
+          
+          if (progress.status === 'downloading' || progress.status === 'processing' || progress.status === 'preparing') {
+            // Resume tracking active download
+            console.log(`Resuming tracking for ${downloadId}`);
+            addDownloadToUI(downloadId, download.videoInfo);
+            updateDownloadProgress(downloadId, progress.percent || 0, progress.status, progress.speed || '', progress.eta || '');
+          } else {
+            // Download finished while popup was closed
+            console.log(`Download ${downloadId} finished while closed:`, progress.status);
+            activeDownloads.delete(downloadId);
+            
+            if (progress.status === 'completed') {
+              showStatus('✅ Download completed while popup was closed!', 'success');
+            } else if (progress.status === 'error') {
+              showStatus(`❌ Download failed: ${progress.error}`, 'error');
+            }
+          }
+        } else {
+          console.log(`Server doesn't have download ${downloadId}, removing from storage`);
+          activeDownloads.delete(downloadId);
+        }
+      } catch (error) {
+        console.log(`Error checking download ${downloadId}:`, error);
+        activeDownloads.delete(downloadId);
+      }
+    }
+    
+    await saveActiveDownloads();
+    
+    // Start polling if we have active downloads
+    if (activeDownloads.size > 0) {
+      startPolling();
+    }
+  }
+  
+  async function pollAllDownloads() {
+    if (activeDownloads.size === 0) {
+      stopPolling();
+      return;
+    }
+    
+    for (const downloadId of activeDownloads.keys()) {
+      try {
+        const response = await fetch(`http://localhost:8080/progress/${downloadId}`);
+        
+        if (response.ok) {
+          const progress = await response.json();
+          
+          if (progress.status === 'downloading') {
+            updateDownloadProgress(downloadId, progress.percent || 0, 'Downloading', progress.speed || '', progress.eta || '');
+          } else if (progress.status === 'processing') {
+            updateDownloadProgress(downloadId, 100, 'Processing...', '', '');
+          } else if (progress.status === 'completed') {
+            updateDownloadProgress(downloadId, 100, 'Completed!', '', '');
+            markDownloadComplete(downloadId, 'completed');
+            activeDownloads.delete(downloadId);
+            
+            // Show notification
+            try {
+              chrome.notifications.create({
+                type: 'basic',
+                iconUrl: 'icons/icon48.png',
+                title: 'Quikvid-DL',
+                message: 'Video download completed!'
+              });
+            } catch (e) {
+              console.log('Notification failed:', e);
+            }
+            
+          } else if (progress.status === 'error') {
+            markDownloadComplete(downloadId, 'error');
+            activeDownloads.delete(downloadId);
+            showStatus(`❌ Download failed: ${progress.error}`, 'error');
+            
+          } else if (progress.status === 'cancelled') {
+            markDownloadComplete(downloadId, 'cancelled');
+            activeDownloads.delete(downloadId);
+          }
+        } else {
+          // Server doesn't have this download anymore
+          activeDownloads.delete(downloadId);
+          removeDownloadFromUI(downloadId);
+        }
+      } catch (error) {
+        console.error(`Error polling download ${downloadId}:`, error);
+      }
+    }
+    
+    await saveActiveDownloads();
+  }
+  
+  function stopPolling() {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+    }
+  }
+  
+  function startPolling() {
+    stopPolling(); // Clear any existing polling
+    progressInterval = setInterval(async () => {
+      await pollAllDownloads();
+    }, 1000);
+  }
+  
+  function updateToggleUI() {
+    if (openFolderEnabled) {
+      openFolderToggle.classList.add('active');
+    } else {
+      openFolderToggle.classList.remove('active');
+    }
+  }
+  
+  function updateUI(videoInfo) {
+    if (!videoInfo) {
+      currentUrlDiv.textContent = 'No video information available';
+      downloadBtn.disabled = true;
+      return;
+    }
+    
+    // Display URL info
+    const urlText = videoInfo.videoTitle || videoInfo.title || videoInfo.url;
+    currentUrlDiv.textContent = urlText.length > 100 ? 
+      urlText.substring(0, 100) + '...' : urlText;
+    
+    // Enable/disable download button based on video detection
+    const isLikelyVideo = videoInfo.isVideoSite || videoInfo.hasVideoElements || videoInfo.hasVideoKeywords;
+    downloadBtn.disabled = !isLikelyVideo;
+    
+    if (isLikelyVideo) {
+      showStatus('Video detected! Ready to download.', 'success');
+    } else {
+      showStatus('No video detected on this page.', 'info');
+    }
+  }
+  
+  function showStatus(message, type = 'info') {
+    statusDiv.textContent = message;
+    statusDiv.className = `status ${type}`;
+    
+    // Clear status after 3 seconds unless it's an error
+    if (type !== 'error') {
+      setTimeout(() => {
+        statusDiv.textContent = '';
+        statusDiv.className = 'status';
+      }, 3000);
+    }
+  }
+  
+  // Download button click handler
+  downloadBtn.addEventListener('click', async function() {
+    if (!currentVideoInfo || !currentVideoInfo.url) {
+      showStatus('No URL to download', 'error');
+      return;
+    }
+    
+    try {
+      // Send URL to local Quikvid-DL server
+      const response = await fetch('http://localhost:8080/download', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: currentVideoInfo.url,
+          title: currentVideoInfo.videoTitle || currentVideoInfo.title,
+          openFolder: openFolderEnabled
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        const downloadId = result.downloadId;
+        
+        // Add to active downloads
+        activeDownloads.set(downloadId, {
+          downloadId: downloadId,
+          videoInfo: currentVideoInfo,
+          timestamp: Date.now()
+        });
+        
+        // Save to storage
+        await saveActiveDownloads();
+        
+        // Add to UI
+        addDownloadToUI(downloadId, currentVideoInfo);
+        
+        // Start polling if not already running
+        if (!progressInterval) {
+          startPolling();
+        }
+        
+        showStatus('Download started!', 'success');
+        
+      } else {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      
+      if (error.message.includes('Failed to fetch')) {
+        showStatus('❌ Quikvid-DL server not running. Start the application first.', 'error');
+      } else {
+        showStatus(`❌ Download failed: ${error.message}`, 'error');
+      }
+    }
+  });
+  
+  // Global cancel function for onclick handlers
+  window.cancelDownload = async function(downloadId) {
+    try {
+      const response = await fetch(`http://localhost:8080/cancel/${downloadId}`, {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        showStatus('Cancelling download...', 'info');
+        updateDownloadProgress(downloadId, 0, 'Cancelling...', '', '');
+      } else {
+        showStatus('Failed to cancel download', 'error');
+      }
+      
+    } catch (error) {
+      console.error('Cancel error:', error);
+      showStatus('Error cancelling download', 'error');
+    }
+  };
+  
+  // Open folder toggle handler
+  openFolderToggle.addEventListener('click', function() {
+    openFolderEnabled = !openFolderEnabled;
+    updateToggleUI();
+    saveSettings();
+    
+    const status = openFolderEnabled ? 'enabled' : 'disabled';
+    showStatus(`Folder opening ${status}`, 'info');
+  });
+  
+  // Settings button click handler
+  settingsBtn.addEventListener('click', function() {
+    chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id });
+  });
+  
+  // Initialize
+  await getCurrentTabInfo();
+});
