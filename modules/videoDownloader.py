@@ -1,70 +1,64 @@
-LICENSE = """
-Copyright © 2021 N² - alphakingaustin@gmail.com
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files
-(the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR 
-ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH 
-THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-"""
+"""Video downloader module using youtube-dl."""
 
-__version__ = "1.1"
-__author__  = "N²"
+import os
+import sys
+
+import youtube_dl
 
 import modules.utilities as utilities
-from contextlib import contextmanager
-import subprocess
-import sys, os
-import youtube_dl
-import time
-import os
-import shutil
+import modules.config as config
+
+def download_video(url, download_path):
+    """Download a video from the given URL."""
+    ydl_opts = {
+        'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE)
+    }
+    
+    try:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(url, download=True)
+        return True
+    except youtube_dl.DownloadError as e:
+        handle_download_error(e)
+        return False
+    except Exception as e:
+        print(f" [!] Error: An unexpected error occurred - {type(e).__name__}")
+        return False
+
+def handle_download_error(error):
+    """Handle download errors with specific messages."""
+    error_msg = str(error).lower()
+    
+    if "unsupported url" in error_msg or "no video formats found" in error_msg:
+        print(" [!] Error: This URL is not supported or no video was found at this link")
+    elif "video unavailable" in error_msg or "private video" in error_msg:
+        print(" [!] Error: This video is unavailable, private, or has been removed")
+    elif "age" in error_msg and "restricted" in error_msg:
+        print(" [!] Error: This video is age-restricted and cannot be downloaded")
+    else:
+        error_summary = str(error).split(':')[0] if ':' in str(error) else str(error)
+        print(f" [!] Error: Unable to download video - {error_summary}")
 
 def main():
+    """Main function for the video downloader module."""
     utilities.clear()
+    
+    download_path = config.get_video_download_path()
     
     while True:
         url = input(" [?] Video URL (or 'exit' to quit): ")
         
         if url.lower() == "exit":
-            exit()
+            sys.exit(0)
         
         if not url.strip():
             print(" [!] Please enter a valid URL or 'exit' to quit\n")
             continue
 
-        print(" [+] Downloading stand by\n")
-
-        torrent_path = os.path.expanduser("~/Documents/Torrent")
-        video_downloads_path = os.path.join(torrent_path, "pron")
+        print(" [+] Downloading, please stand by...\n")
         
-        ydl = youtube_dl.YoutubeDL({'outtmpl': f'{video_downloads_path}/%(uploader)s - %(title)s - %(id)s.%(ext)s'})
-
-        try:
-            with ydl:
-                result = ydl.extract_info(
-                    url,
-                    download = True
-                )
+        if download_video(url, download_path):
             print(" [+] Download completed successfully!")
             break
-        except youtube_dl.DownloadError as e:
-            error_msg = str(e).lower()
-            if "unsupported url" in error_msg or "no video formats found" in error_msg:
-                print(" [!] Error: This URL is not supported or no video was found at this link")
-            elif "video unavailable" in error_msg or "private video" in error_msg:
-                print(" [!] Error: This video is unavailable, private, or has been removed")
-            elif "age" in error_msg and "restricted" in error_msg:
-                print(" [!] Error: This video is age-restricted and cannot be downloaded")
-            else:
-                print(f" [!] Error: Unable to download video - {str(e).split(':')[0] if ':' in str(e) else str(e)}")
+        else:
             print(" [!] Please try a different URL or 'exit' to quit\n")
-        except Exception as e:
-            print(f" [!] Error: An unexpected error occurred - {type(e).__name__}")
-            print(" [!] Please try a different URL or 'exit' to quit\n")
-
-
-#https://www.pornhub.com/view_video.php?viewkey=ph5e80ec51bc6b5

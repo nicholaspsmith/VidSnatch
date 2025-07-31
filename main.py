@@ -1,87 +1,67 @@
-__version__ = "Closed Beta 1.1"
-__author__  = "N²"
+"""Video downloader using youtube-dl with automatic dependency management."""
 
-import time
-
-time.sleep(1)
-
-import os # Standerd python modules
+import os
 import sys
 import traceback
+
 import modules.utilities as utilities
+import modules.config as config
 
-os.system('cls' if os.name == 'nt' else 'clear') # Clear the LICNECE information to make the screen look nicer
+utilities.clear()
+print(" [+] Checking required folders")
 
-DEBUG = True
-# Check if the required folders are setup
-print(" [+] Checking requred folders")
-
-torrent_path = os.path.expanduser("~/Documents/Torrent")
-video_downloads_path = os.path.join(torrent_path, "pron")
+video_downloads_path = config.get_video_download_path()
 
 if not os.path.exists(video_downloads_path):
-    inp = input(" [!] Missing folders detected, do you wish to create the requred folders? (Y/n) ")
+    inp = input(" [!] Missing folders detected, do you wish to create the required folders? (Y/n) ")
     if "y" not in inp.lower() and inp != "":
-        exit()
+        sys.exit(1)
 
-    os.makedirs(torrent_path, exist_ok=True)
-    if not os.path.exists(video_downloads_path):
-        os.mkdir(video_downloads_path)
-
+    os.makedirs(video_downloads_path, exist_ok=True)
+    print(" [+] Created required folders")
 else:
-    print(" [+] Found all requred folders")
+    print(" [+] Found all required folders")
 
-# Check every module / package and ask the user to install them if they arent installed
+print("\n [+] Checking required packages")
 
-packages = { # Some packages go under a diffrent pip name than what you use to import
-    "youtube_dl" : "youtube_dl",
-    "requests" : "requests",
-    "pync" : "pync",
-    "bs4" : "bs4"
-}
-
-print("\n [+] Checking requred packages")
-
-while True: # Will run untill all the packages has been installed and imported successfully
+while True:
     try:
-        # import youtube_dl # Python packages that needs to be installed
-        from bs4 import BeautifulSoup
-        import pync
-        import requests
-        import youtube_dl # type: ignore
-
-
-        print(" [+] All requred packages are installed")
+        import youtube_dl  # noqa: F401
+        print(" [+] All required packages are installed")
         break
     except ImportError as e:
-        package = str(e)[17:-1]
-        inp = input(f" [!] Missing '{package}', do you wish to install {package}? (Y/n) ")
+        package_name = str(e).split("'")[1] if "'" in str(e) else str(e)[17:-1]
+        inp = input(f" [!] Missing '{package_name}', do you wish to install {package_name}? (Y/n) ")
 
         if "y" not in inp.lower() and inp != "":
-            exit()
+            sys.exit(1)
 
-        utilities.install(packages[package])
+        pip_package = config.REQUIRED_PACKAGES.get(package_name, package_name)
+        utilities.install(pip_package)
 
-print("\n [+] Loading Modules") # Load the external files of the project
+print("\n [+] Loading Modules")
 try:
     import modules.videoDownloader as videoDownloader
-
     print(" [+] All modules imported successfully")
 except ImportError as e:
-    if DEBUG:
+    if config.DEBUG:
         exc_info = sys.exc_info()
         traceback.print_exception(*exc_info)
         del exc_info
 
-    input(" [!] Falied loading modules, make sure you cloned all the files from the github, press enter to exit")
-    exit()
+    input(" [!] Failed loading modules, make sure you cloned all the files from GitHub. Press enter to exit.")
+    sys.exit(1)
 
-try:
-    while True:
-        utilities.clear() # Clear the screen
+def main():
+    """Main application loop."""
+    try:
+        while True:
+            utilities.clear()
+            videoDownloader.main()
+    except KeyboardInterrupt:
+        print("\nGoodbye!")
+        sys.exit(0)
 
-        videoDownloader.main() # Call the main function of the video downloader module
-except KeyboardInterrupt:
-    print("\nGoodbye :)")
-    exit()
+if __name__ == "__main__":
+    main()
 
