@@ -61,3 +61,7 @@ Quikvid-DL supports downloading from 1000+ sites through yt-dlp. Here are the to
 20. **XVIDEOS** - Adult content platform
 
 *Note: Not all sites are guaranteed to work as websites constantly change. The complete list of supported extractors can be found in the [yt-dlp documentation](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).*
+
+## Credit
+Created from a fork of [PH-DL](https://github.com/logicguy1/PH-DL)
+Original author: Drillenissen#4268 - [logicguy.mailandcontact@gmail.com](mailto:logicguy.mailandcontact@gmail.com)
