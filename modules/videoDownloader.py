@@ -25,23 +25,46 @@ import shutil
 
 def main():
     utilities.clear()
-    url = input(" [?] Video URL (or 'exit' to quit): ")
     
-    if url.lower() == "exit":
-        exit()
+    while True:
+        url = input(" [?] Video URL (or 'exit' to quit): ")
+        
+        if url.lower() == "exit":
+            exit()
+        
+        if not url.strip():
+            print(" [!] Please enter a valid URL or 'exit' to quit\n")
+            continue
 
-    print(" [+] Downloading stand by\n")
+        print(" [+] Downloading stand by\n")
 
-    torrent_path = os.path.expanduser("~/Documents/Torrent")
-    video_downloads_path = os.path.join(torrent_path, "pron")
-    
-    ydl = youtube_dl.YoutubeDL({'outtmpl': f'{video_downloads_path}/%(uploader)s - %(title)s - %(id)s.%(ext)s'}) # If anyone knows how to mute the output of this send help :,)
+        torrent_path = os.path.expanduser("~/Documents/Torrent")
+        video_downloads_path = os.path.join(torrent_path, "pron")
+        
+        ydl = youtube_dl.YoutubeDL({'outtmpl': f'{video_downloads_path}/%(uploader)s - %(title)s - %(id)s.%(ext)s'})
 
-    with ydl:
-        result = ydl.extract_info(
-            url,
-            download = True
-        )
+        try:
+            with ydl:
+                result = ydl.extract_info(
+                    url,
+                    download = True
+                )
+            print(" [+] Download completed successfully!")
+            break
+        except youtube_dl.DownloadError as e:
+            error_msg = str(e).lower()
+            if "unsupported url" in error_msg or "no video formats found" in error_msg:
+                print(" [!] Error: This URL is not supported or no video was found at this link")
+            elif "video unavailable" in error_msg or "private video" in error_msg:
+                print(" [!] Error: This video is unavailable, private, or has been removed")
+            elif "age" in error_msg and "restricted" in error_msg:
+                print(" [!] Error: This video is age-restricted and cannot be downloaded")
+            else:
+                print(f" [!] Error: Unable to download video - {str(e).split(':')[0] if ':' in str(e) else str(e)}")
+            print(" [!] Please try a different URL or 'exit' to quit\n")
+        except Exception as e:
+            print(f" [!] Error: An unexpected error occurred - {type(e).__name__}")
+            print(" [!] Please try a different URL or 'exit' to quit\n")
 
 
 #https://www.pornhub.com/view_video.php?viewkey=ph5e80ec51bc6b5
