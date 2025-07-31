@@ -197,10 +197,24 @@ document.addEventListener('DOMContentLoaded', async function() {
     downloadItem.id = `download-${downloadId}`;
     
     const title = videoInfo.videoTitle || videoInfo.title || 'Unknown Video';
-    const shortTitle = title.length > 50 ? title.substring(0, 50) + '...' : title;
+    
+    // Check if this is the current page video
+    const isCurrentVideo = currentVideoInfo && 
+      (videoInfo.url === currentVideoInfo.url || 
+       (videoInfo.videoTitle && currentVideoInfo.videoTitle && videoInfo.videoTitle === currentVideoInfo.videoTitle));
+    
+    let displayTitle;
+    let titleClass = 'download-title';
+    
+    if (isCurrentVideo) {
+      displayTitle = 'This video';
+      titleClass += ' current-video';
+    } else {
+      displayTitle = title.length > 40 ? title.substring(0, 40) + '...' : title;
+    }
     
     downloadItem.innerHTML = `
-      <div class="download-title" title="${title}">${shortTitle}</div>
+      <div class="${titleClass}" title="${title}">${displayTitle}</div>
       <div class="progress-text">Preparing download...</div>
       <div class="progress-bar">
         <div class="progress-fill" style="width: 0%"></div>
@@ -230,9 +244,22 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     progressFill.style.width = `${percent}%`;
     
-    let text = `${status} - ${percent.toFixed(1)}%`;
-    if (speed) text += ` (${speed})`;
-    if (eta) text += ` ETA: ${eta}`;
+    // Normalize status to always show "Downloading" with capital D
+    const normalizedStatus = status.toLowerCase() === 'downloading' ? 'Downloading' : status;
+    
+    // Clean up ETA by removing color codes and extra formatting
+    let cleanEta = eta;
+    if (eta) {
+      // Remove ANSI color codes like [0;33m and [0m
+      cleanEta = eta.replace(/\[[0-9;]*m/g, '');
+    }
+    
+    // Simple format: "Downloading 20.4%" or "Downloading 20.4% - ETA: 12:41"
+    let text = `${normalizedStatus} ${percent.toFixed(1)}%`;
+    if (cleanEta) {
+      text += ` - ETA: ${cleanEta}`;
+    }
+    
     progressText.textContent = text;
   }
   
