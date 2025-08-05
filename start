@@ -2,4 +2,11 @@
 # VidSnatch Quick Start Script (Unix/macOS/Linux)
 # Equivalent to "npm start" - automatically handles venv and starts CLI + server
 
-python3 setup.py start_with_server.py
+# Ensure we use the venv Python directly
+if [ -f "venv/bin/python" ]; then
+    echo " [+] Using virtual environment Python"
+    ./venv/bin/python start_with_server.py
+else
+    echo " [!] Virtual environment not found, falling back to setup.py"
+    python3 setup.py start_with_server.py
+fi

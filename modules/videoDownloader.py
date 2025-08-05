@@ -21,7 +21,7 @@ def download_video(url, download_path):
         'file_access_retries': 3,  # Retry file access
         # Add headers to improve CDN compatibility
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -33,6 +33,28 @@ def download_video(url, download_path):
             'default': ['--retry-connrefused', '--retry', '5', '--timeout', '300']
         }
     }
+    
+    # Apply site-specific settings for better compatibility
+    if 'youtube.com' in url or 'youtu.be' in url:
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android'],  # Use Android client for better compatibility
+            }
+        }
+    elif 'pornhub.com' in url:
+        # Add Pornhub-specific configuration
+        ydl_opts.update({
+            'retries': 10,
+            'fragment_retries': 10,
+            'sleep_interval_requests': 3,
+            'http_headers': {
+                **ydl_opts['http_headers'],
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://www.pornhub.com/',
+            }
+        })
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

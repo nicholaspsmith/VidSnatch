@@ -8,6 +8,8 @@ import time
 import uuid
 import signal
 import subprocess
+import logging
+import logging.handlers
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -32,6 +34,47 @@ import modules.videoDownloader as videoDownloader
 # Global dictionary to track downloads
 active_downloads = {}
 download_lock = threading.Lock()
+
+def setup_logging():
+    """Set up circular buffer logging for the web server."""
+    os.makedirs('.logs', exist_ok=True)
+    
+    # Create logger
+    logger = logging.getLogger('quikvid_server')
+    logger.setLevel(logging.DEBUG)
+    
+    # Remove existing handlers to avoid duplicates
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # Create rotating file handler (circular buffer)
+    # 5MB max file size, keep 3 files (15MB total)
+    file_handler = logging.handlers.RotatingFileHandler(
+        '.logs/server.log',
+        maxBytes=5*1024*1024,  # 5MB
+        backupCount=3,
+        encoding='utf-8'
+    )
+    
+    # Create console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(logging.Formatter('%(message)s'))  # Simple console format
+    
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+# Set up logging
+server_logger = setup_logging()
 
 class DownloadProgress:
     """Track download progress and status."""
@@ -317,6 +360,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             with download_lock:
                 active_downloads[download_id] = progress
             
+            server_logger.info(f"Chrome Extension Request: {title}")
+            server_logger.info(f"URL: {url}")
+            server_logger.info(f"Download ID: {download_id}")
             print(f" [+] Chrome Extension Request: {title}")
             print(f" [+] URL: {url}")
             print(f" [+] Download ID: {download_id}")
@@ -382,7 +428,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     
                     # Realistic browser headers to avoid detection
                     'http_headers': {
-                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                         'Accept-Language': 'en-US,en;q=0.9',
                         'Accept-Encoding': 'gzip, deflate, br',
@@ -411,6 +457,40 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         'default': ['--retry-connrefused', '--retry', '5', '--timeout', '300', '--limit-rate', '1M']
                     }
                 }
+                
+                # Apply site-specific settings for better compatibility
+                if 'youtube.com' in progress.url or 'youtu.be' in progress.url:
+                    server_logger.info(f"Detected YouTube URL, applying specific configuration")
+                    print(f" [+] Detected YouTube URL, applying YouTube-specific configuration...")
+                    ydl_opts['extractor_args'] = {
+                        'youtube': {
+                            'player_client': ['android'],  # Use Android client for better compatibility
+                        }
+                    }
+                elif 'pornhub.com' in progress.url:
+                    server_logger.info(f"Detected Pornhub URL, applying specific configuration")
+                    print(f" [+] Detected Pornhub URL, applying Pornhub-specific configuration...")
+                    # Add more aggressive extraction options for Pornhub
+                    ydl_opts.update({
+                        'extractor_args': {
+                            'pornhub': {
+                                'cookiesfrombrowser': None,
+                            }
+                        },
+                        # More aggressive retry settings for problematic sites
+                        'retries': 10,
+                        'fragment_retries': 10,
+                        # Try to bypass potential blocks
+                        'sleep_interval_requests': 3,
+                        # Use different user agent
+                        'http_headers': {
+                            **ydl_opts['http_headers'],
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                            'Accept': '*/*',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Referer': 'https://www.pornhub.com/',
+                        }
+                    })
                 
                 print(f" [+] yt-dlp options configured")
                 progress.percent = 15.0
@@ -444,7 +524,34 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     
             except yt_dlp.utils.ExtractorError as e:
                 print(f" [!] Extractor error: {e}")
-                raise
+                # Try fallback approach for Pornhub
+                if 'pornhub.com' in progress.url and 'Unable to extract title' in str(e):
+                    print(f" [+] Attempting Pornhub fallback extraction...")
+                    try:
+                        fallback_opts = {
+                            **ydl_opts,
+                            'format': 'best',
+                            'ignoreerrors': False,
+                            'http_headers': {
+                                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Accept-Language': 'en-us,en;q=0.5',
+                                'Accept-Encoding': 'gzip,deflate',
+                                'Connection': 'keep-alive',
+                                'Upgrade-Insecure-Requests': '1',
+                            }
+                        }
+                        with yt_dlp.YoutubeDL(fallback_opts) as fallback_ydl:
+                            info = fallback_ydl.extract_info(progress.url, download=False)
+                            print(f" [+] Fallback extraction successful: {info.get('title', 'Unknown')}")
+                            fallback_ydl.extract_info(progress.url, download=True)
+                            print(f" [+] Fallback download completed successfully")
+                            return  # Success, exit the function
+                    except Exception as fallback_e:
+                        print(f" [!] Fallback also failed: {fallback_e}")
+                        raise e  # Raise original error
+                else:
+                    raise
             except Exception as e:
                 print(f" [!] Unexpected error during download: {e}")
                 print(f" [!] Error type: {type(e).__name__}")
@@ -461,13 +568,68 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             
         except yt_dlp.DownloadError as e:
             error_msg = str(e)
+            server_logger.error(f"yt-dlp Download error for {progress.url}: {error_msg}")
             print(f" [!] yt-dlp Download error: {error_msg}")
-            if not progress.cancelled:
-                progress.status = 'error'
-                progress.error = error_msg
+            
+            # Reset progress on error
+            progress.percent = 0.0
+            
+            # Try fallback approach for Pornhub
+            if 'pornhub.com' in progress.url and 'Unable to extract title' in error_msg:
+                print(f" [+] Attempting Pornhub fallback extraction...")
+                progress.percent = 25.0  # Show some progress for fallback attempt
+                try:
+                    fallback_opts = {
+                        'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
+                        'progress_hooks': [lambda d: self.progress_hook(d, progress)],
+                        'format': 'best',
+                        'quiet': False,
+                        'no_warnings': False,
+                        'retries': 15,
+                        'fragment_retries': 15,
+                        'socket_timeout': 300,
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'en-us,en;q=0.5',
+                            'Accept-Encoding': 'gzip,deflate',
+                            'Connection': 'keep-alive',
+                            'Upgrade-Insecure-Requests': '1',
+                            'Referer': 'https://www.pornhub.com/',
+                        },
+                        'sleep_interval_requests': 5,
+                        'extractor_args': {
+                            'generic': {
+                                'default_search': 'auto'
+                            }
+                        }
+                    }
+                    with yt_dlp.YoutubeDL(fallback_opts) as fallback_ydl:
+                        print(f" [+] Trying fallback extraction...")
+                        progress.percent = 40.0
+                        info = fallback_ydl.extract_info(progress.url, download=False)
+                        print(f" [+] Fallback extraction successful: {info.get('title', 'Unknown')}")
+                        progress.percent = 60.0
+                        fallback_ydl.extract_info(progress.url, download=True)
+                        print(f" [+] Fallback download completed successfully")
+                        progress.status = 'completed'
+                        progress.percent = 100.0
+                        return  # Success, exit the function
+                except Exception as fallback_e:
+                    print(f" [!] Fallback also failed: {fallback_e}")
+                    progress.percent = 0.0  # Reset on fallback failure
+                    if not progress.cancelled:
+                        progress.status = 'error'
+                        progress.error = error_msg
+            else:
+                if not progress.cancelled:
+                    progress.status = 'error'
+                    progress.error = error_msg
         except Exception as e:
             error_msg = str(e)
             print(f" [!] General download error: {error_msg}")
+            # Reset progress on error
+            progress.percent = 0.0
             if not progress.cancelled:
                 progress.status = 'error'
                 progress.error = error_msg
@@ -592,9 +754,12 @@ def start_server(port=8080):
     server_address = ('localhost', port)
     httpd = HTTPServer(server_address, QuikvidHandler)
     
+    server_logger.info(f"Starting Enhanced VidSnatch Server on http://localhost:{port}")
+    server_logger.info("Logging enabled - check .logs/server.log for detailed logs")
     print(f" [+] Starting Enhanced VidSnatch Server on http://localhost:{port}")
     print(f" [+] Features: Progress tracking, cancellation, folder control")
     print(f" [+] Chrome extension ready for enhanced downloads")
+    print(f" [+] Logs saved to .logs/server.log (circular buffer: 15MB total)")
     print(f" [+] Press Ctrl+C to stop the server")
     
     try:

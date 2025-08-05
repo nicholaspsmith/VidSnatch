@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   const statusDiv = document.getElementById('status');
   const currentUrlDiv = document.getElementById('currentUrl');
   const downloadsContainer = document.getElementById('downloadsContainer');
+  const downloadsEmpty = document.getElementById('downloadsEmpty');
+  const downloadsSection = document.querySelector('.downloads-section');
   const openFolderToggle = document.getElementById('openFolderToggle');
   const folderPath = document.getElementById('folderPath');
   const openFolderBtn = document.getElementById('openFolderBtn');
@@ -230,6 +232,18 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
   
   function addDownloadToUI(downloadId, videoInfo) {
+    // Show downloads section when adding first download
+    if (downloadsSection && !downloadsSection.classList.contains('visible')) {
+      downloadsSection.classList.add('visible');
+      // Add class to body to trigger height increase
+      document.body.classList.add('has-downloads');
+    }
+    
+    // Hide empty state when adding first download
+    if (downloadsEmpty) {
+      downloadsEmpty.style.display = 'none';
+    }
+    
     const downloadElement = createDownloadElement(downloadId, videoInfo);
     downloadsContainer.appendChild(downloadElement);
     return downloadElement;
@@ -267,6 +281,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     const downloadElement = document.getElementById(`download-${downloadId}`);
     if (downloadElement) {
       downloadElement.remove();
+    }
+    
+    // Check if any actual download items remain (excluding empty state)
+    const downloadItems = downloadsContainer.querySelectorAll('.download-item');
+    
+    if (downloadItems.length === 0) {
+      // Hide entire downloads section when no downloads remain
+      if (downloadsSection) {
+        downloadsSection.classList.remove('visible');
+        // Remove class from body to trigger height decrease
+        document.body.classList.remove('has-downloads');
+      }
     }
   }
   
@@ -307,6 +333,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     console.log('Found stored downloads:', activeDownloads);
     
+    let hasActiveDownloads = false;
+    
     // Check each stored download with server
     for (const [downloadId, download] of activeDownloads) {
       try {
@@ -321,6 +349,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             console.log(`Resuming tracking for ${downloadId}`);
             addDownloadToUI(downloadId, download.videoInfo);
             updateDownloadProgress(downloadId, progress.percent || 0, progress.status, progress.speed || '', progress.eta || '');
+            hasActiveDownloads = true;
           } else {
             // Download finished while popup was closed
             console.log(`Download ${downloadId} finished while closed:`, progress.status);
@@ -345,7 +374,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     await saveActiveDownloads();
     
     // Start polling if we have active downloads
-    if (activeDownloads.size > 0) {
+    if (activeDownloads.size > 0 && hasActiveDownloads) {
       startPolling();
     }
   }
