@@ -1,0 +1,888 @@
+#!/usr/bin/env python3
+"""
+VidSnatch GUI Installer for macOS
+A user-friendly graphical installer with Install, Uninstall, and Reinstall options
+"""
+
+# Check if tkinter is available, fall back to command line if not
+try:
+    import tkinter as tk
+    from tkinter import ttk, scrolledtext, messagebox
+    TKINTER_AVAILABLE = True
+except ImportError:
+    TKINTER_AVAILABLE = False
+    print("❌ tkinter not available. Falling back to command line installer.")
+    print("To use the GUI installer, install tkinter with: brew install python-tk")
+
+import subprocess
+import threading
+import os
+import sys
+import shutil
+import signal
+import time
+from pathlib import Path
+
+class VidSnatchInstaller:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("VidSnatch Installer")
+        self.root.geometry("600x500")
+        self.root.resizable(False, False)
+        
+        # Center the window on screen
+        self.center_window()
+        
+        # Set up the UI
+        self.setup_ui()
+        
+        # Installation paths
+        self.install_dir = os.path.expanduser("~/Applications/VidSnatch")
+        self.current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Track installation status
+        self.is_installed = self.check_installation()
+        self.update_status()
+        
+    def center_window(self):
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        
+    def setup_ui(self):
+        # Main frame
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="🎬 VidSnatch Installer", 
+                               font=("Helvetica", 24, "bold"))
+        title_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
+        
+        # Description
+        desc_text = ("VidSnatch is a powerful video downloader that works with YouTube and many other sites.\n"
+                    "It includes a menu bar app and Chrome extension for easy video downloading.")
+        desc_label = ttk.Label(main_frame, text=desc_text, justify=tk.CENTER, wraplength=500)
+        desc_label.grid(row=1, column=0, columnspan=2, pady=(0, 20))
+        
+        # Status frame
+        status_frame = ttk.LabelFrame(main_frame, text="Installation Status", padding="10")
+        status_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 20))
+        
+        self.status_label = ttk.Label(status_frame, text="Checking installation...", 
+                                     font=("Helvetica", 12))
+        self.status_label.grid(row=0, column=0)
+        
+        # Buttons frame
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.grid(row=3, column=0, columnspan=2, pady=(0, 20))
+        
+        # Configure button frame to center buttons
+        buttons_frame.columnconfigure(0, weight=1)
+        buttons_frame.columnconfigure(1, weight=1)
+        buttons_frame.columnconfigure(2, weight=1)
+        
+        # Create custom style for larger text
+        style = ttk.Style()
+        style.configure('Large.TButton', font=('TkDefaultFont', 10))
+        
+        # Install button
+        self.install_button = ttk.Button(buttons_frame, text="📦 Install", 
+                                        command=self.install_vidsnatch, width=14,
+                                        style='Large.TButton')
+        self.install_button.grid(row=0, column=0, padx=5, sticky='ew')
+        
+        # Uninstall button
+        self.uninstall_button = ttk.Button(buttons_frame, text="🗑️ Uninstall", 
+                                          command=self.uninstall_vidsnatch, width=14,
+                                          style='Large.TButton')
+        self.uninstall_button.grid(row=0, column=1, padx=5, sticky='ew')
+        
+        # Reinstall button
+        self.reinstall_button = ttk.Button(buttons_frame, text="🔄 Reinstall", 
+                                          command=self.reinstall_vidsnatch, width=14,
+                                          style='Large.TButton')
+        self.reinstall_button.grid(row=0, column=2, padx=5, sticky='ew')
+        
+        # Progress bar
+        self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
+        self.progress.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        # Output text area
+        output_frame = ttk.LabelFrame(main_frame, text="Installation Output", padding="5")
+        output_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        
+        self.output_text = scrolledtext.ScrolledText(output_frame, height=12, width=70)
+        self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Chrome Extension section
+        extension_frame = ttk.LabelFrame(main_frame, text="Chrome Extension Setup", padding="10")
+        extension_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 10))
+        
+        extension_info = ttk.Label(extension_frame, 
+                                  text="After installing VidSnatch, set up the Chrome extension to download videos directly from web pages.",
+                                  wraplength=500, justify=tk.CENTER)
+        extension_info.grid(row=0, column=0, pady=(0, 10))
+        
+        extension_button = ttk.Button(extension_frame, text="🌐 Setup Chrome Extension", 
+                                     command=self.setup_chrome_extension, style='Large.TButton')
+        extension_button.grid(row=1, column=0, pady=(0, 5))
+        
+        # Close button
+        close_button = ttk.Button(main_frame, text="Close", command=self.root.quit, width=15)
+        close_button.grid(row=7, column=0, columnspan=2, pady=(10, 0))
+        
+        # Configure grid weights
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(5, weight=1)
+        output_frame.columnconfigure(0, weight=1)
+        output_frame.rowconfigure(0, weight=1)
+        
+    def check_installation(self):
+        """Check if VidSnatch is currently installed"""
+        app_path = os.path.expanduser("~/Applications/VidSnatch.app")
+        server_path = self.install_dir
+        
+        app_exists = os.path.exists(app_path)
+        server_exists = os.path.exists(server_path)
+        
+        # Check for key files to ensure it's a complete installation
+        key_files_exist = True
+        if server_exists:
+            required_files = ['web_server.py', 'modules', 'venv']
+            for file in required_files:
+                if not os.path.exists(os.path.join(server_path, file)):
+                    key_files_exist = False
+                    break
+        
+        # Also check if the app bundle has the executable
+        if app_exists:
+            executable_path = os.path.join(app_path, "Contents", "MacOS", "VidSnatch")
+            if not os.path.exists(executable_path):
+                app_exists = False
+        
+        return app_exists and server_exists and key_files_exist
+        
+    def update_status(self):
+        """Update the installation status display"""
+        if self.is_installed:
+            self.status_label.config(text="✅ VidSnatch is installed", foreground="green")
+            self.install_button.config(state="disabled")
+            self.uninstall_button.config(state="normal")
+            self.reinstall_button.config(state="normal")
+        else:
+            self.status_label.config(text="❌ VidSnatch is not installed", foreground="red")
+            self.install_button.config(state="normal")
+            self.uninstall_button.config(state="disabled")
+            self.reinstall_button.config(state="disabled")
+            
+    def log_output(self, message):
+        """Add message to output text area"""
+        self.output_text.insert(tk.END, message + "\n")
+        self.output_text.see(tk.END)
+        self.root.update()
+        
+    def disable_buttons(self):
+        """Disable all buttons during operations"""
+        self.install_button.config(state="disabled")
+        self.uninstall_button.config(state="disabled")
+        self.reinstall_button.config(state="disabled")
+        self.progress.start()
+        
+    def enable_buttons(self):
+        """Re-enable buttons after operations"""
+        self.progress.stop()
+        self.update_status()
+        
+    def run_command(self, command, description):
+        """Run a shell command and log output"""
+        self.log_output(f"🔨 {description}...")
+        try:
+            result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=self.current_dir)
+            
+            if result.stdout:
+                self.log_output(result.stdout)
+            if result.stderr:
+                self.log_output(f"Error: {result.stderr}")
+                
+            if result.returncode == 0:
+                self.log_output(f"✅ {description} completed successfully")
+                return True
+            else:
+                self.log_output(f"❌ {description} failed with return code {result.returncode}")
+                return False
+                
+        except Exception as e:
+            self.log_output(f"❌ Error running {description}: {str(e)}")
+            return False
+            
+    def install_vidsnatch(self):
+        """Install VidSnatch"""
+        def install_thread():
+            self.disable_buttons()
+            self.log_output("🎬 Starting VidSnatch installation...")
+            
+            try:
+                success = self.run_install_steps()
+                
+                if success:
+                    self.log_output("\n🎉 Installation completed successfully!")
+                    self.log_output("📋 Next Steps:")
+                    self.log_output("1. Look for VidSnatch icon in your menu bar")
+                    self.log_output("2. Click it to start/stop the server")
+                    self.log_output("3. Use the Chrome Extension Setup button below")
+                    
+                    # Refresh installation status
+                    self.is_installed = self.check_installation()
+                    self.update_status()
+                    
+                    messagebox.showinfo("Success", "VidSnatch installed successfully!\n\nLook for the VidSnatch icon in your menu bar.")
+                else:
+                    self.log_output("\n❌ Installation failed. Please check the output above.")
+                    messagebox.showerror("Error", "Installation failed. Please check the output for details.")
+                    
+            except Exception as e:
+                self.log_output(f"\n❌ Installation error: {str(e)}")
+                messagebox.showerror("Error", f"Installation error: {str(e)}")
+                
+            finally:
+                self.enable_buttons()
+                
+        threading.Thread(target=install_thread, daemon=True).start()
+        
+    def uninstall_vidsnatch(self):
+        """Uninstall VidSnatch"""
+        if not messagebox.askyesno("Confirm Uninstall", 
+                                  "Are you sure you want to uninstall VidSnatch?\n\n"
+                                  "This will remove all VidSnatch files and stop all processes."):
+            return
+            
+        def uninstall_thread():
+            self.disable_buttons()
+            self.log_output("🗑️ Starting VidSnatch uninstallation...")
+            
+            try:
+                success = self.run_uninstall_steps()
+                
+                if success:
+                    self.log_output("\n🎉 Uninstallation completed successfully!")
+                    
+                    # Refresh installation status
+                    self.is_installed = self.check_installation()
+                    self.update_status()
+                    
+                    messagebox.showinfo("Success", "VidSnatch uninstalled successfully!")
+                else:
+                    self.log_output("\n❌ Uninstallation failed. Please check the output above.")
+                    messagebox.showerror("Error", "Uninstallation failed. Please check the output for details.")
+                    
+            except Exception as e:
+                self.log_output(f"\n❌ Uninstallation error: {str(e)}")
+                messagebox.showerror("Error", f"Uninstallation error: {str(e)}")
+                
+            finally:
+                self.enable_buttons()
+                
+        threading.Thread(target=uninstall_thread, daemon=True).start()
+        
+    def reinstall_vidsnatch(self):
+        """Reinstall VidSnatch (uninstall then install)"""
+        if not messagebox.askyesno("Confirm Reinstall", 
+                                  "Are you sure you want to reinstall VidSnatch?\n\n"
+                                  "This will first uninstall the current version, then install a fresh copy."):
+            return
+            
+        def reinstall_thread():
+            self.disable_buttons()
+            self.log_output("🔄 Starting VidSnatch reinstallation...")
+            
+            try:
+                # First uninstall
+                self.log_output("\n--- UNINSTALL PHASE ---")
+                uninstall_success = self.run_uninstall_steps()
+                
+                if not uninstall_success:
+                    self.log_output("❌ Uninstall phase failed, aborting reinstall.")
+                    messagebox.showerror("Error", "Uninstall phase failed. Please check the output for details.")
+                    return
+                    
+                # Wait a moment between operations
+                time.sleep(2)
+                
+                # Then install
+                self.log_output("\n--- INSTALL PHASE ---")
+                install_success = self.run_install_steps()
+                
+                if install_success:
+                    self.log_output("\n🎉 Reinstallation completed successfully!")
+                    self.is_installed = True
+                    messagebox.showinfo("Success", "VidSnatch reinstalled successfully!")
+                else:
+                    self.log_output("\n❌ Install phase failed.")
+                    messagebox.showerror("Error", "Install phase failed. Please check the output for details.")
+                    
+            except Exception as e:
+                self.log_output(f"\n❌ Reinstallation error: {str(e)}")
+                messagebox.showerror("Error", f"Reinstallation error: {str(e)}")
+                
+            finally:
+                self.enable_buttons()
+                
+        threading.Thread(target=reinstall_thread, daemon=True).start()
+        
+    def setup_chrome_extension(self):
+        """Setup Chrome extension for VidSnatch"""
+        def extension_thread():
+            try:
+                self.log_output("🌐 Setting up Chrome extension...")
+                
+                # Check if VidSnatch is installed
+                if not self.check_installation():
+                    messagebox.showerror("Error", "Please install VidSnatch first before setting up the Chrome extension.")
+                    return
+                
+                extension_dir = os.path.join(self.install_dir, "chrome-extension")
+                
+                if not os.path.exists(extension_dir):
+                    messagebox.showerror("Error", f"Chrome extension files not found at {extension_dir}")
+                    return
+                
+                self.log_output("📋 Instructions for Chrome Extension Setup:")
+                self.log_output("1. Opening Chrome Extensions page...")
+                self.log_output("2. Enable 'Developer mode' (toggle in top-right)")
+                self.log_output("3. Click 'Load unpacked'")
+                self.log_output(f"4. Navigate to: {extension_dir}")
+                self.log_output("5. Select the chrome-extension folder")
+                self.log_output("")
+                
+                # Open Chrome extensions page
+                import subprocess
+                try:
+                    subprocess.run(["open", "-a", "Google Chrome", "chrome://extensions/"], check=True)
+                    self.log_output("✅ Chrome Extensions page opened")
+                    
+                    # Also open the extension directory in Finder
+                    subprocess.run(["open", extension_dir], check=True)
+                    self.log_output(f"✅ Extension directory opened: {extension_dir}")
+                    
+                    messagebox.showinfo("Chrome Extension Setup", 
+                                      "Chrome Extensions page and extension folder have been opened.\n\n"
+                                      "Follow these steps:\n"
+                                      "1. Enable 'Developer mode' in Chrome\n"
+                                      "2. Click 'Load unpacked'\n"
+                                      "3. Select the chrome-extension folder that just opened\n"
+                                      "4. The VidSnatch extension will be installed!")
+                                      
+                except subprocess.CalledProcessError as e:
+                    self.log_output(f"❌ Error opening Chrome: {e}")
+                    messagebox.showerror("Error", f"Could not open Chrome. Please manually navigate to chrome://extensions/ and load the extension from:\n{extension_dir}")
+                    
+            except Exception as e:
+                self.log_output(f"❌ Extension setup error: {e}")
+                messagebox.showerror("Error", f"Extension setup error: {e}")
+                
+        threading.Thread(target=extension_thread, daemon=True).start()
+        
+    def run_install_steps(self):
+        """Run the actual installation steps"""
+        # Create installation directory
+        self.log_output("📁 Creating installation directory...")
+        os.makedirs(self.install_dir, exist_ok=True)
+        
+        # Copy Python server files
+        server_src = os.path.join(self.current_dir, "server")
+        if os.path.exists(server_src):
+            self.log_output("🐍 Installing Python server...")
+            for item in os.listdir(server_src):
+                src_path = os.path.join(server_src, item)
+                dst_path = os.path.join(self.install_dir, item)
+                if os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src_path, dst_path)
+        
+        # Set up Python virtual environment
+        self.log_output("⚙️ Setting up Python environment...")
+        venv_path = os.path.join(self.install_dir, "venv")
+        
+        if not self.run_command(f"cd '{self.install_dir}' && python3 -m venv venv", "Creating virtual environment"):
+            return False
+            
+        # Install dependencies
+        pip_path = os.path.join(venv_path, "bin", "pip")
+        requirements_path = os.path.join(self.current_dir, "requirements.txt")
+        
+        if not self.run_command(f"'{pip_path}' install --upgrade pip", "Upgrading pip"):
+            return False
+            
+        if os.path.exists(requirements_path):
+            if not self.run_command(f"'{pip_path}' install -r '{requirements_path}'", "Installing dependencies"):
+                return False
+        
+        # Install menu bar app
+        self.log_output("📱 Installing menu bar app...")
+        app_src = os.path.join(self.current_dir, "VidSnatch.app")
+        app_dst = os.path.expanduser("~/Applications/VidSnatch.app")
+        
+        if os.path.exists(app_src):
+            if os.path.exists(app_dst):
+                shutil.rmtree(app_dst)
+            shutil.copytree(app_src, app_dst)
+            
+            # Make executable
+            executable_path = os.path.join(app_dst, "Contents", "MacOS", "VidSnatch")
+            if os.path.exists(executable_path):
+                os.chmod(executable_path, 0o755)
+        
+        # Install Chrome extension files
+        self.log_output("🌐 Installing Chrome extension...")
+        ext_src = os.path.join(self.current_dir, "chrome-extension")
+        ext_dst = os.path.join(self.install_dir, "chrome-extension")
+        
+        if os.path.exists(ext_src):
+            if os.path.exists(ext_dst):
+                shutil.rmtree(ext_dst)
+            shutil.copytree(ext_src, ext_dst)
+        
+        # Create desktop shortcut for extension installation
+        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
+        shortcut_content = f'''#!/bin/bash
+echo "🌐 Opening Chrome Extensions page..."
+echo "📋 Instructions:"
+echo "1. Enable 'Developer mode' (toggle in top-right)"
+echo "2. Click 'Load unpacked'"
+echo "3. Navigate to: {self.install_dir}/chrome-extension"
+echo "4. Select the chrome-extension folder"
+echo ""
+read -p "Press Enter to open Chrome Extensions page..."
+open -a "Google Chrome" chrome://extensions/
+'''
+        
+        with open(desktop_shortcut, 'w') as f:
+            f.write(shortcut_content)
+        os.chmod(desktop_shortcut, 0o755)
+        
+        # Create launch scripts
+        self.create_launch_scripts()
+        
+        # Try to launch the menu bar app
+        self.log_output("🚀 Starting VidSnatch menu bar app...")
+        
+        try:
+            # Method 1: Try to open the app bundle directly
+            app_path = os.path.expanduser("~/Applications/VidSnatch.app")
+            result = subprocess.run(["open", app_path], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
+                self.log_output("✅ Menu bar app launched via 'open' command")
+            else:
+                raise subprocess.CalledProcessError(result.returncode, "open")
+                
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # Method 2: Fallback to launch script
+            try:
+                launch_script = os.path.join(self.install_dir, "launch-menubar.py")
+                python_path = os.path.join(venv_path, "bin", "python3")
+                
+                if os.path.exists(launch_script):
+                    subprocess.Popen([python_path, launch_script], 
+                                   cwd=self.install_dir,
+                                   stdout=subprocess.DEVNULL, 
+                                   stderr=subprocess.DEVNULL)
+                    self.log_output("✅ Menu bar app launched via launch script")
+                else:
+                    self.log_output("⚠️ Launch script not found")
+                    
+            except Exception as e:
+                self.log_output(f"⚠️ Could not auto-launch menu bar app: {e}")
+                self.log_output("📝 You can manually launch it from Applications folder")
+        
+        time.sleep(2)
+            
+        return True
+        
+    def run_uninstall_steps(self):
+        """Run the actual uninstallation steps"""
+        # Stop all VidSnatch processes
+        self.log_output("🛑 Stopping all VidSnatch processes...")
+        
+        commands = [
+            "killall -9 VidSnatch 2>/dev/null || true",
+            "pkill -9 -f 'web_server.py' 2>/dev/null || true",
+            "pkill -9 -f 'VidSnatch' 2>/dev/null || true",
+            "pkill -9 -f 'launch-menubar.py' 2>/dev/null || true"
+        ]
+        
+        for cmd in commands:
+            subprocess.run(cmd, shell=True, capture_output=True)
+            
+        # Kill anything using port 8080
+        try:
+            result = subprocess.run("lsof -ti :8080 2>/dev/null", shell=True, capture_output=True, text=True)
+            if result.stdout.strip():
+                pids = result.stdout.strip().split('\n')
+                for pid in pids:
+                    subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                self.log_output("✅ Freed port 8080")
+        except:
+            pass
+            
+        # Remove installation directory
+        if os.path.exists(self.install_dir):
+            shutil.rmtree(self.install_dir)
+            self.log_output(f"✅ Removed {self.install_dir}")
+            
+        # Remove app bundle
+        app_path = os.path.expanduser("~/Applications/VidSnatch.app")
+        if os.path.exists(app_path):
+            shutil.rmtree(app_path)
+            self.log_output("✅ Removed ~/Applications/VidSnatch.app")
+            
+        # Remove desktop shortcuts
+        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
+        if os.path.exists(desktop_shortcut):
+            os.remove(desktop_shortcut)
+            self.log_output("✅ Removed desktop shortcut")
+            
+        return True
+        
+    def create_launch_scripts(self):
+        """Create launch scripts for the application"""
+        venv_python = os.path.join(self.install_dir, "venv", "bin", "python3")
+        
+        # Create launch script for command line
+        start_script = os.path.join(self.install_dir, "start-vidsnatch.command")
+        start_content = f'''#!/bin/bash
+cd "{self.install_dir}"
+source venv/bin/activate
+python3 "{os.path.expanduser('~/Applications/VidSnatch.app/Contents/MacOS/VidSnatch')}"
+'''
+        
+        with open(start_script, 'w') as f:
+            f.write(start_content)
+        os.chmod(start_script, 0o755)
+        
+        # Create Python launcher for menu bar
+        launcher_script = os.path.join(self.install_dir, "launch-menubar.py")
+        venv_python = os.path.join(self.install_dir, "venv", "bin", "python3")
+        launcher_content = f'''#!/usr/bin/env python3
+import subprocess
+import sys
+import os
+
+# Change to the VidSnatch directory
+os.chdir(os.path.expanduser("~/Applications/VidSnatch"))
+
+# Run the menu bar app with the correct Python interpreter
+try:
+    # Use the virtual environment Python
+    python_path = "{venv_python}"
+    app_script = os.path.expanduser("~/Applications/VidSnatch.app/Contents/MacOS/VidSnatch")
+    
+    # Run with proper environment
+    env = os.environ.copy()
+    env['PYTHONPATH'] = os.path.expanduser("~/Applications/VidSnatch")
+    
+    subprocess.run([python_path, app_script], env=env)
+except Exception as e:
+    print(f"Error launching menu bar app: {{e}}")
+    # Fallback: try with system python
+    try:
+        subprocess.run([sys.executable, os.path.expanduser("~/Applications/VidSnatch.app/Contents/MacOS/VidSnatch")])
+    except Exception as e2:
+        print(f"Fallback also failed: {{e2}}")
+'''
+        
+        with open(launcher_script, 'w') as f:
+            f.write(launcher_content)
+        os.chmod(launcher_script, 0o755)
+        
+    def run_install_steps_cli(self):
+        """CLI version of installation steps with print output"""
+        print("📁 Creating installation directory...")
+        os.makedirs(self.install_dir, exist_ok=True)
+        
+        # Copy Python server files
+        server_src = os.path.join(self.current_dir, "server")
+        if os.path.exists(server_src):
+            print("🐍 Installing Python server...")
+            for item in os.listdir(server_src):
+                src_path = os.path.join(server_src, item)
+                dst_path = os.path.join(self.install_dir, item)
+                if os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src_path, dst_path)
+        
+        # Set up Python virtual environment
+        print("⚙️ Setting up Python environment...")
+        venv_path = os.path.join(self.install_dir, "venv")
+        
+        result = subprocess.run(f"cd '{self.install_dir}' && python3 -m venv venv", 
+                              shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"❌ Error creating virtual environment: {result.stderr}")
+            return False
+            
+        # Install dependencies
+        pip_path = os.path.join(venv_path, "bin", "pip")
+        requirements_path = os.path.join(self.current_dir, "requirements.txt")
+        
+        result = subprocess.run(f"'{pip_path}' install --upgrade pip", 
+                              shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"❌ Error upgrading pip: {result.stderr}")
+            return False
+            
+        if os.path.exists(requirements_path):
+            result = subprocess.run(f"'{pip_path}' install -r '{requirements_path}'", 
+                                  shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"❌ Error installing dependencies: {result.stderr}")
+                return False
+        
+        # Install menu bar app
+        print("📱 Installing menu bar app...")
+        app_src = os.path.join(self.current_dir, "VidSnatch.app")
+        app_dst = os.path.expanduser("~/Applications/VidSnatch.app")
+        
+        if os.path.exists(app_src):
+            if os.path.exists(app_dst):
+                shutil.rmtree(app_dst)
+            shutil.copytree(app_src, app_dst)
+            
+            # Make executable
+            executable_path = os.path.join(app_dst, "Contents", "MacOS", "VidSnatch")
+            if os.path.exists(executable_path):
+                os.chmod(executable_path, 0o755)
+        
+        # Install Chrome extension files
+        print("🌐 Installing Chrome extension...")
+        ext_src = os.path.join(self.current_dir, "chrome-extension")
+        ext_dst = os.path.join(self.install_dir, "chrome-extension")
+        
+        if os.path.exists(ext_src):
+            if os.path.exists(ext_dst):
+                shutil.rmtree(ext_dst)
+            shutil.copytree(ext_src, ext_dst)
+        
+        # Create desktop shortcut for extension installation
+        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
+        shortcut_content = f'''#!/bin/bash
+echo "🌐 Opening Chrome Extensions page..."
+echo "📋 Instructions:"
+echo "1. Enable 'Developer mode' (toggle in top-right)"
+echo "2. Click 'Load unpacked'"
+echo "3. Navigate to: {self.install_dir}/chrome-extension"
+echo "4. Select the chrome-extension folder"
+echo ""
+read -p "Press Enter to open Chrome Extensions page..."
+open -a "Google Chrome" chrome://extensions/
+'''
+        
+        with open(desktop_shortcut, 'w') as f:
+            f.write(shortcut_content)
+        os.chmod(desktop_shortcut, 0o755)
+        
+        # Create launch scripts
+        self.create_launch_scripts()
+        
+        # Try to launch the menu bar app
+        print("🚀 Starting VidSnatch menu bar app...")
+        launch_script = os.path.join(self.install_dir, "launch-menubar.py")
+        python_path = os.path.join(venv_path, "bin", "python3")
+        
+        if os.path.exists(launch_script):
+            subprocess.Popen([python_path, launch_script], 
+                           cwd=self.install_dir,
+                           stdout=subprocess.DEVNULL, 
+                           stderr=subprocess.DEVNULL)
+            time.sleep(2)
+            
+        return True
+        
+    def run_uninstall_steps_cli(self):
+        """CLI version of uninstallation steps with print output"""
+        print("🛑 Stopping all VidSnatch processes...")
+        
+        commands = [
+            "killall -9 VidSnatch 2>/dev/null || true",
+            "pkill -9 -f 'web_server.py' 2>/dev/null || true",
+            "pkill -9 -f 'VidSnatch' 2>/dev/null || true",
+            "pkill -9 -f 'launch-menubar.py' 2>/dev/null || true"
+        ]
+        
+        for cmd in commands:
+            subprocess.run(cmd, shell=True, capture_output=True)
+            
+        # Kill anything using port 8080
+        try:
+            result = subprocess.run("lsof -ti :8080 2>/dev/null", shell=True, capture_output=True, text=True)
+            if result.stdout.strip():
+                pids = result.stdout.strip().split('\n')
+                for pid in pids:
+                    subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                print("✅ Freed port 8080")
+        except:
+            pass
+            
+        # Remove installation directory
+        if os.path.exists(self.install_dir):
+            shutil.rmtree(self.install_dir)
+            print(f"✅ Removed {self.install_dir}")
+            
+        # Remove app bundle
+        app_path = os.path.expanduser("~/Applications/VidSnatch.app")
+        if os.path.exists(app_path):
+            shutil.rmtree(app_path)
+            print("✅ Removed ~/Applications/VidSnatch.app")
+            
+        # Remove desktop shortcuts
+        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
+        if os.path.exists(desktop_shortcut):
+            os.remove(desktop_shortcut)
+            print("✅ Removed desktop shortcut")
+            
+        return True
+
+class CommandLineInstaller:
+    """Fallback command line installer when tkinter is not available"""
+    
+    def __init__(self):
+        self.install_dir = os.path.expanduser("~/Applications/VidSnatch")
+        self.current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+    def run(self):
+        print("\n🎬 VidSnatch Command Line Installer")
+        print("=" * 40)
+        
+        # Check installation status
+        is_installed = self.check_installation()
+        if is_installed:
+            print("✅ VidSnatch is currently installed")
+        else:
+            print("❌ VidSnatch is not installed")
+            
+        print("\nOptions:")
+        print("1. Install VidSnatch")
+        print("2. Uninstall VidSnatch")
+        print("3. Reinstall VidSnatch")
+        print("4. Exit")
+        
+        while True:
+            try:
+                choice = input("\nEnter your choice (1-4): ").strip()
+                
+                if choice == "1":
+                    if is_installed:
+                        print("❌ VidSnatch is already installed. Use option 3 to reinstall.")
+                    else:
+                        self.install()
+                        is_installed = True
+                elif choice == "2":
+                    if not is_installed:
+                        print("❌ VidSnatch is not installed.")
+                    else:
+                        confirm = input("Are you sure you want to uninstall VidSnatch? (y/N): ")
+                        if confirm.lower() == 'y':
+                            self.uninstall()
+                            is_installed = False
+                elif choice == "3":
+                    confirm = input("Are you sure you want to reinstall VidSnatch? (y/N): ")
+                    if confirm.lower() == 'y':
+                        if is_installed:
+                            print("🗑️ Uninstalling current version...")
+                            self.uninstall()
+                        print("📦 Installing fresh version...")
+                        self.install()
+                        is_installed = True
+                elif choice == "4":
+                    print("👋 Goodbye!")
+                    break
+                else:
+                    print("❌ Invalid choice. Please enter 1-4.")
+                    
+            except KeyboardInterrupt:
+                print("\n\n👋 Goodbye!")
+                break
+                
+    def check_installation(self):
+        app_exists = os.path.exists(os.path.expanduser("~/Applications/VidSnatch.app"))
+        server_exists = os.path.exists(self.install_dir)
+        return app_exists and server_exists
+        
+    def install(self):
+        print("\n🎬 Installing VidSnatch...")
+        installer = VidSnatchInstaller(None)
+        installer.install_dir = self.install_dir
+        installer.current_dir = self.current_dir
+        
+        try:
+            success = installer.run_install_steps_cli()
+            if success:
+                print("✅ Installation completed successfully!")
+            else:
+                print("❌ Installation failed.")
+        except Exception as e:
+            print(f"❌ Installation error: {e}")
+            
+    def uninstall(self):
+        print("\n🗑️ Uninstalling VidSnatch...")
+        installer = VidSnatchInstaller(None)
+        installer.install_dir = self.install_dir
+        installer.current_dir = self.current_dir
+        
+        try:
+            success = installer.run_uninstall_steps_cli()
+            if success:
+                print("✅ Uninstallation completed successfully!")
+            else:
+                print("❌ Uninstallation failed.")
+        except Exception as e:
+            print(f"❌ Uninstallation error: {e}")
+
+def main():
+    if not TKINTER_AVAILABLE:
+        # Fall back to command line installer
+        cli_installer = CommandLineInstaller()
+        cli_installer.run()
+        return
+        
+    try:
+        # Set up the GUI
+        root = tk.Tk()
+        
+        # Set the app icon if available
+        try:
+            # Try to use the VidSnatch icon
+            icon_path = os.path.join(os.path.dirname(__file__), "chrome-extension", "icons", "icon128.png")
+            if os.path.exists(icon_path):
+                root.iconphoto(True, tk.PhotoImage(file=icon_path))
+        except Exception as e:
+            print(f"Could not set icon: {e}")
+        
+        app = VidSnatchInstaller(root)
+        
+        # Handle window close
+        def on_closing():
+            root.quit()
+            root.destroy()
+            
+        root.protocol("WM_DELETE_WINDOW", on_closing)
+        
+        # Start the GUI
+        root.mainloop()
+        
+    except Exception as e:
+        print(f"GUI Error: {e}")
+        print("Falling back to command line installer...")
+        cli_installer = CommandLineInstaller()
+        cli_installer.run()
+
+if __name__ == "__main__":
+    main()
