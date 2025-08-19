@@ -18,6 +18,7 @@ from urllib.parse import urlparse, parse_qs
 import modules.config as config
 import modules.utilities as utilities
 from url_tracker import init_tracker, get_tracker
+from file_metadata import get_file_metadata
 
 # Check for yt-dlp dependency
 while True:
@@ -1145,6 +1146,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 return
             
             files = []
+            file_metadata = get_file_metadata()
+            
             try:
                 for item in sorted(os.listdir(folder_path)):
                     # Skip hidden files and system files
@@ -1173,12 +1176,17 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         if item.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v')):
                             duration = get_video_duration(item_path)
                         
+                        # Get file metadata (URL and title)
+                        metadata = file_metadata.get_file_metadata(item)
+                        source_url = metadata.get('url', '') if metadata else ''
+                        
                         files.append({
                             'name': item,
                             'size': size_str,
                             'modified': modified,
                             'path': item_path,
-                            'duration': duration
+                            'duration': duration,
+                            'url': source_url
                         })
             except PermissionError:
                 pass
@@ -1776,6 +1784,20 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 progress.percent = 100.0
                 print(f" [+] Download completed: {progress.title}")
                 
+                # Store file metadata with source URL
+                try:
+                    file_metadata = get_file_metadata()
+                    # Find the downloaded file(s) and store metadata
+                    download_path = config.get_download_path()
+                    for filename in os.listdir(download_path):
+                        # Check if this file matches the download (basic matching)
+                        if any(word.lower() in filename.lower() for word in progress.title.split() if len(word) > 3):
+                            if not filename.endswith(('.part', '.ytdl', '.temp')):
+                                file_metadata.add_file(filename, progress.url, progress.title)
+                                print(f" [+] Stored metadata for file: {filename}")
+                except Exception as e:
+                    print(f" [!] Error storing file metadata: {e}")
+                
                 # Mark as completed in URL tracker
                 if hasattr(progress, 'url_track_id'):
                     tracker = get_tracker()
@@ -2095,6 +2117,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     --input-border: #ddd;
                     --toggle-bg: #ccc;
                     --toggle-active-bg: #007bff;
+                    --toggle-slider-bg: white;
+                    --uninstall-text-color: #d32f2f;
+                    --secondary-text-color: #666;
                 }}
                 
                 [data-theme="dark"] {{
@@ -2119,6 +2144,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     --input-border: #555;
                     --toggle-bg: #555;
                     --toggle-active-bg: #0d6efd;
+                    --toggle-slider-bg: #f0f0f0;
+                    --uninstall-text-color: #ff6b6b;
+                    --secondary-text-color: #bbb;
                 }}
                 
                 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -2128,7 +2156,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
                     min-height: 100vh;
                     color: var(--text-color);
-                    transition: all 0.3s ease;
+                    transition: all 0.25s ease-in-out;
                 }}
                 
                 .container {{
@@ -2198,7 +2226,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     width: 24px;
                     left: 3px;
                     bottom: 3px;
-                    background-color: white;
+                    background-color: var(--toggle-slider-bg);
                     transition: 0.3s;
                     border-radius: 50%;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
@@ -2308,7 +2336,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     left: 3px;
                     width: 24px;
                     height: 24px;
-                    background: white;
+                    background: var(--toggle-slider-bg);
                     border-radius: 50%;
                     transition: all 0.3s ease;
                     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -2358,6 +2386,23 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 .btn.danger {{
                     background: linear-gradient(135deg, #d63447, #c42f3a);
+                }}
+                
+                .uninstall-link-btn {{
+                    background: none;
+                    border: none;
+                    color: var(--uninstall-text-color);
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    text-decoration: none;
+                    padding: 8px 0;
+                    transition: all 0.2s ease;
+                    font-family: inherit;
+                }}
+                
+                .uninstall-link-btn:hover {{
+                    opacity: 0.8;
+                    text-decoration: underline;
                 }}
                 
                 .downloads-section {{
@@ -2430,6 +2475,30 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     font-size: 0.9rem;
                     background: var(--card-bg);
                     color: var(--text-color);
+                    table-layout: fixed;
+                }}
+                
+                .resizable-column {{
+                    position: relative;
+                }}
+                
+                .column-resizer {{
+                    position: absolute;
+                    top: 0;
+                    right: 0;
+                    width: 3px;
+                    height: 100%;
+                    cursor: col-resize;
+                    background: transparent;
+                    z-index: 10;
+                }}
+                
+                .column-resizer:hover {{
+                    background: var(--btn-bg);
+                }}
+                
+                .column-resizing {{
+                    user-select: none;
                 }}
                 
                 .files-table thead {{
@@ -2639,6 +2708,31 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     color: #999;
                 }}
                 
+                .loading-container {{
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 40px;
+                    color: var(--text-color);
+                    opacity: 0.7;
+                }}
+                
+                .loading-spinner {{
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid var(--card-border);
+                    border-top: 3px solid var(--btn-bg);
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin-bottom: 15px;
+                }}
+                
+                @keyframes spin {{
+                    0% {{ transform: rotate(0deg); }}
+                    100% {{ transform: rotate(360deg); }}
+                }}
+                
                 .video-player-section {{
                     width: 100%;
                     max-width: 1200px;
@@ -2753,7 +2847,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .modal-content {{
-                    background: white;
+                    background: var(--card-bg);
                     border-radius: 15px;
                     padding: 30px;
                     max-width: 600px;
@@ -2994,6 +3088,110 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     transform: translateY(-1px);
                 }}
                 
+                /* Tags System Styles */
+                .tags-container {{
+                    min-height: 24px;
+                    position: relative;
+                }}
+                
+                .tags-display {{
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px;
+                    min-height: 20px;
+                    cursor: pointer;
+                    padding: 2px;
+                    border-radius: 4px;
+                    transition: background 0.2s ease;
+                }}
+                
+                .tags-display:hover {{
+                    background: var(--table-hover-bg);
+                }}
+                
+                .tags-display.empty {{
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: var(--secondary-text-color);
+                    font-size: 0.8rem;
+                    opacity: 0.5;
+                }}
+                
+                .tag-badge {{
+                    background: var(--btn-bg);
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.7rem;
+                    font-weight: 500;
+                    white-space: nowrap;
+                    max-width: 80px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }}
+                
+                .tag-badge:hover {{
+                    background: var(--btn-hover-bg);
+                    transform: scale(1.05);
+                }}
+                
+                .tags-input {{
+                    width: 100%;
+                    border: 1px solid var(--input-border);
+                    background: var(--input-bg);
+                    color: var(--text-color);
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-size: 0.8rem;
+                    transition: border-color 0.2s ease;
+                }}
+                
+                .tags-input:focus {{
+                    outline: none;
+                    border-color: var(--btn-bg);
+                }}
+                
+                /* Search Bar Styles */
+                .search-bar-container {{
+                    position: relative;
+                    margin-bottom: 15px;
+                }}
+                
+                .search-input {{
+                    width: 100%;
+                    padding: 12px 16px 12px 45px;
+                    border: 2px solid var(--input-border);
+                    background: var(--input-bg);
+                    color: var(--text-color);
+                    border-radius: 8px;
+                    font-size: 0.9rem;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                }}
+                
+                .search-input:focus {{
+                    outline: none;
+                    border-color: var(--btn-bg);
+                    box-shadow: 0 0 0 3px rgba(61, 77, 183, 0.1);
+                }}
+                
+                .search-icon {{
+                    position: absolute;
+                    left: 15px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    color: var(--secondary-text-color);
+                    font-size: 1.1rem;
+                    pointer-events: none;
+                }}
+                
+                .search-input:focus + .search-icon {{
+                    color: var(--btn-bg);
+                }}
+                
                 @media (max-width: 768px) {{
                     .main-content {{
                         grid-template-columns: 1fr;
@@ -3066,7 +3264,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             </div>
                             <span id="serverStatus">Running</span>
                         </div>
-                        <div style="font-size: 0.9rem; color: #666;">
+                        <div style="font-size: 0.9rem; color: var(--secondary-text-color);">
                             <strong>Port:</strong> 8080<br>
                             <strong>Active Downloads:</strong> <span id="activeCount">{active_count}</span>
                         </div>
@@ -3092,46 +3290,40 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     <!-- Suggested Downloads Card -->
                     <div class="card" style="grid-column: 1 / -1;">
                         <h3>💡 Suggested Downloads</h3>
-                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                            <button class="btn" id="scanHistoryBtn" onclick="scanBrowserHistory()">
-                                🔍 Scan History
-                            </button>
-                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
-                                # of Days:
-                                <select id="historyDaysSelect" style="padding: 4px 8px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-color); border-radius: 4px;">
-                                    <option value="1">1</option>
-                                    <option value="3">3</option>
-                                    <option value="7" selected>7</option>
-                                    <option value="14">14</option>
-                                    <option value="30">30</option>
-                                    <option value="60">60</option>
-                                    <option value="90">90</option>
-                                </select>
-                            </label>
-                            <span id="scanStatus" style="font-size: 0.9rem; color: var(--text-color); opacity: 0.7;"></span>
-                        </div>
-                        <div class="suggested-downloads" id="suggestedDownloads">
-                            <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-color); opacity: 0.7;">
-                                Click "Scan History" to find frequently visited videos that you might want to download.
-                            </div>
+                        <p style="margin-bottom: 15px; color: var(--secondary-text-color);">
+                            Scan your browser history for frequently visited video URLs
+                        </p>
+                        <button class="btn" id="loadSuggestionsBtn" onclick="loadSuggestions()">Load Suggestions</button>
+                        <div id="suggestedContainer" style="margin-top: 15px; display: none;">
+                            <div id="scanStatus" style="margin-bottom: 10px; color: var(--secondary-text-color);"></div>
+                            <div class="suggested-downloads" id="suggestedDownloads"></div>
                         </div>
                     </div>
                     
                     <!-- File Explorer Card -->
                     <div class="card" style="grid-column: 1 / -1;">
                         <h3>🗂️ Downloaded Files</h3>
+                        <div class="search-bar-container">
+                            <input type="text" id="fileSearchBar" class="search-input" 
+                                   placeholder="Search files by name, tags, or URL..." 
+                                   oninput="filterFiles(this.value)">
+                            <div class="search-icon">🔍</div>
+                        </div>
                         <div class="file-explorer" id="fileExplorer">
-                            <div class="empty-state">Loading files...</div>
+                            <div class="loading-container">
+                                <div class="loading-spinner"></div>
+                                <div>Loading files...</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- Uninstall Section -->
-                    <div class="card" style="grid-column: 1 / -1; background: rgba(255, 235, 238, 0.95);">
-                        <h3 style="color: #d32f2f;">🗑️ Uninstall VidSnatch</h3>
-                        <p style="margin-bottom: 15px; color: #666;">
+                    <div class="card uninstall-section" style="grid-column: 1 / -1;">
+                        <h3 style="color: var(--uninstall-text-color);">🗑️ Uninstall VidSnatch</h3>
+                        <p style="margin-bottom: 15px; color: var(--text-color);">
                             Need to remove VidSnatch completely? Click below to open the uninstaller.
                         </p>
-                        <button class="btn danger" onclick="openUninstaller()">Open Uninstaller</button>
+                        <button class="uninstall-link-btn" onclick="openUninstaller()">Open Uninstaller</button>
                     </div>
                 </div>
             </div>
@@ -3156,19 +3348,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     localStorage.setItem('personNames', JSON.stringify(personNames));
                 }}
                 
-                // Suggested downloads storage
-                const deletedSuggestions = JSON.parse(localStorage.getItem('deletedSuggestions') || '[]');
-                
-                function isUrlDeleted(url) {{
-                    return deletedSuggestions.includes(url);
-                }}
-                
-                function markUrlAsDeleted(url) {{
-                    if (!deletedSuggestions.includes(url)) {{
-                        deletedSuggestions.push(url);
-                        localStorage.setItem('deletedSuggestions', JSON.stringify(deletedSuggestions));
-                    }}
-                }}
                 
                 async function scanBrowserHistory() {{
                     const scanBtn = document.getElementById('scanHistoryBtn');
@@ -3184,9 +3363,14 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     scanStatus.textContent = 'Searching browser history...';
                     
                     try {{
-                        // Access browser history (requires history permission)
-                        if (!chrome || !chrome.history) {{
-                            throw new Error('Browser history access not available');
+                        // Access browser history (only available in Chrome extensions)
+                        if (typeof chrome === 'undefined' || !chrome.history) {{
+                            scanStatus.textContent = 'Browser history access not available in web interface';
+                            scanStatus.innerHTML = `
+                                ❌ Browser history access not available in web interface<br>
+                                <small>Use the VidSnatch Chrome Extension for automatic history scanning</small>
+                            `;
+                            return;
                         }}
                         
                         const startTime = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -3409,12 +3593,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     updateDownloads();
                     setInterval(updateDownloads, 2000); // Update every 2 seconds
                     
-                    // Auto-scan browser history for the past week on page load
-                    setTimeout(() => {{
-                        if (chrome && chrome.history) {{
-                            scanBrowserHistory();
-                        }}
-                    }}, 1000); // Delay to let other initialization complete
                     
                 }});
                 
@@ -3478,6 +3656,14 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                 aVal = a.sizeBytes;
                                 bVal = b.sizeBytes;
                                 break;
+                            case 'url':
+                                aVal = (a.url || '').toLowerCase();
+                                bVal = (b.url || '').toLowerCase();
+                                break;
+                            case 'tags':
+                                aVal = getFileTags(a.name).join(' ').toLowerCase();
+                                bVal = getFileTags(b.name).join(' ').toLowerCase();
+                                break;
                             case 'date':
                                 aVal = a.timestamp;
                                 bVal = b.timestamp;
@@ -3503,20 +3689,34 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     }}
                     
                     const tableHTML = `
-                        <table class="files-table">
+                        <table class="files-table resizable-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 30%; cursor: pointer;" onclick="sortFiles('title')" title="Sort by title">
+                                    <th class="resizable-column" style="width: 25%; cursor: pointer;" onclick="sortFiles('title')" title="Sort by title">
                                         Title ${{currentSort.column === 'title' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
                                     </th>
-                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
+                                    <th class="resizable-column" style="width: 12%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
                                         Name ${{currentSort.column === 'name' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
                                     </th>
-                                    <th style="width: 12%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
+                                    <th class="resizable-column" style="width: 10%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
                                         File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
                                     </th>
-                                    <th style="width: 12%">Length</th>
-                                    <th style="width: 31%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
+                                    <th class="resizable-column" style="width: 8%">
+                                        Length
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 20%; cursor: pointer;" onclick="sortFiles('url')" title="Sort by source URL">
+                                        Source URL ${{currentSort.column === 'url' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 15%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
+                                        Tags ${{currentSort.column === 'tags' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
                                         Date Added ${{currentSort.column === 'date' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                     </th>
                                 </tr>
@@ -3568,6 +3768,20 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>${{length}}</td>
+                                            <td title="${{file.url || 'No URL available'}}">
+                                                ${{file.url ? `<a href="${{file.url}}" target="_blank" style="color: var(--text-color); text-decoration: none; opacity: 0.7;" title="Open source URL">${{file.url.length > 50 ? file.url.substring(0, 50) + '...' : file.url}}</a>` : '<span style="opacity: 0.5;">No URL</span>'}}
+                                            </td>
+                                            <td>
+                                                <div class="tags-container" data-filename="${{file.name}}">
+                                                    <div class="tags-display" onclick="event.stopPropagation(); editTags('${{file.name}}')"></div>
+                                                    <div class="tags-editor" style="display: none;">
+                                                        <input type="text" class="tags-input" placeholder="Add tags (up to 5)..." 
+                                                               onclick="event.stopPropagation()" 
+                                                               onkeypress="handleTagsKeypress(event, '${{file.name}}')"
+                                                               onblur="saveTags('${{file.name}}')">
+                                                    </div>
+                                                </div>
+                                            </td>
                                             <td>
                                                 ${{isPartialFile ? `
                                                     <div class="file-actions">
@@ -3589,10 +3803,65 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     
                     fileExplorer.innerHTML = tableHTML;
                     
+                    // Initialize column resizing
+                    initializeColumnResizing();
+                    
+                    // Initialize tags displays
+                    initializeAllTagsDisplays();
+                    
                     // Update video files list for navigation
                     videoFilesList = filesData
                         .filter(file => /\\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v)$/i.test(file.name))
                         .map(file => file.name);
+                }}
+                
+                function initializeColumnResizing() {{
+                    let isResizing = false;
+                    let currentColumn = null;
+                    let startX = 0;
+                    let startWidth = 0;
+                    
+                    // Add event listeners to all column resizers
+                    document.querySelectorAll('.column-resizer').forEach(resizer => {{
+                        resizer.addEventListener('mousedown', (e) => {{
+                            isResizing = true;
+                            currentColumn = e.target.closest('th');
+                            startX = e.clientX;
+                            startWidth = currentColumn.offsetWidth;
+                            
+                            document.body.classList.add('column-resizing');
+                            e.preventDefault();
+                        }});
+                    }});
+                    
+                    document.addEventListener('mousemove', (e) => {{
+                        if (!isResizing || !currentColumn) return;
+                        
+                        const diff = e.clientX - startX;
+                        const newWidth = Math.max(50, startWidth + diff); // Minimum width of 50px
+                        const table = currentColumn.closest('table');
+                        const columnIndex = Array.from(currentColumn.parentNode.children).indexOf(currentColumn);
+                        
+                        // Update column width
+                        currentColumn.style.width = newWidth + 'px';
+                        
+                        // Update corresponding cells in body
+                        const rows = table.querySelectorAll('tbody tr');
+                        rows.forEach(row => {{
+                            const cell = row.children[columnIndex];
+                            if (cell) {{
+                                cell.style.width = newWidth + 'px';
+                            }}
+                        }});
+                    }});
+                    
+                    document.addEventListener('mouseup', () => {{
+                        if (isResizing) {{
+                            isResizing = false;
+                            currentColumn = null;
+                            document.body.classList.remove('column-resizing');
+                        }}
+                    }});
                 }}
                 
                 async function loadDownloadedFiles() {{
@@ -3626,10 +3895,14 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                 }};
                             }});
                             
+                            // Initialize filtered data with all files
+                            filteredFilesData = [...filesData];
+                            
                             // Apply current sort (default is date descending - newest first)
                             sortFiles(currentSort.column);
                         }} else {{
                             filesData = [];
+                            filteredFilesData = [];
                             renderFilesTable();
                         }}
                     }} catch (error) {{
@@ -3861,6 +4134,66 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     // Store the filename for later use
                     currentRetryFilename = filename;
                     
+                    // First, check if we have a stored URL for this file
+                    const fileData = filesData.find(file => file.name === filename);
+                    if (fileData && fileData.url) {{
+                        console.log('Found stored URL for file:', fileData.url);
+                        try {{
+                            const response = await fetch('/download', {{
+                                method: 'POST',
+                                headers: {{ 'Content-Type': 'application/json' }},
+                                body: JSON.stringify({{
+                                    url: fileData.url,
+                                    title: filename.replace(/\\.(part|ytdl|temp)$/i, ''),
+                                    isRetry: true
+                                }})
+                            }});
+                            
+                            const result = await response.json();
+                            if (result.success) {{
+                                alert('✅ Retry started using stored URL!');
+                                updateDownloads();
+                                return;
+                            }}
+                        }} catch (error) {{
+                            console.log('Stored URL retry failed:', error);
+                        }}
+                    }}
+                    
+                    // If no stored URL or stored URL failed, try Chrome extension
+                    try {{
+                        console.log('Attempting to use Chrome extension for retry...');
+                        
+                        const extensionResponse = await new Promise((resolve, reject) => {{
+                            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {{
+                                chrome.runtime.sendMessage(
+                                    {{ action: 'retryFromWebInterface', filename: filename }},
+                                    (response) => {{
+                                        if (chrome.runtime.lastError) {{
+                                            reject(new Error('Extension communication failed: ' + chrome.runtime.lastError.message));
+                                        }} else {{
+                                            resolve(response);
+                                        }}
+                                    }}
+                                );
+                            }} else {{
+                                reject(new Error('Chrome extension not available'));
+                            }}
+                        }});
+                        
+                        if (extensionResponse.success) {{
+                            alert(`✅ ${{extensionResponse.message}}`);
+                            updateDownloads(); // Refresh the downloads list
+                            return;
+                        }} else {{
+                            console.log('Extension retry failed:', extensionResponse.error);
+                            // Fall back to local search
+                        }}
+                    }} catch (extensionError) {{
+                        console.log('Chrome extension not available for retry:', extensionError.message);
+                        // Fall back to local search
+                    }}
+                    
                     // First, try to find a matching failed download with stored URL
                     try {{
                         const response = await fetch(`/find-failed-download-for-file/${{encodeURIComponent(filename)}}`);
@@ -3898,8 +4231,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         
                         console.log(`Searching browser history for: "${{searchTitle}}" (cleaned from "${{filename}}")`);
                         
-                        // Search browser history (requires history permission)
-                        if (chrome && chrome.history) {{
+                        // Search browser history (only available in Chrome extensions)
+                        if (typeof chrome !== 'undefined' && chrome.history) {{
                             const historyItems = await new Promise((resolve) => {{
                                 chrome.history.search({{
                                     text: '',
@@ -4015,7 +4348,27 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         
                     }} catch (error) {{
                         console.error('Error searching browser history:', error);
-                        alert(`Could not search browser history for "${{filename}}". Make sure the VidSnatch extension has history permission.`);
+                        
+                        // Provide helpful guidance for web interface users
+                        if (typeof chrome === 'undefined' || !chrome.history) {{
+                            alert(`Browser history access is not available in the web interface.
+
+To retry "${{filename}}":
+
+🔧 Option 1: Use VidSnatch Chrome Extension
+   • The Chrome extension has history access and can automatically find the URL
+   • Click the VidSnatch icon in your browser toolbar
+
+📋 Option 2: Manual retry
+   • Open Chrome history (Ctrl+H or Cmd+Y)
+   • Search for the video title (without file extension)
+   • Copy the video page URL
+   • Paste it in the download box above
+
+The web interface is limited by browser security - only extensions can access history.`);
+                        }} else {{
+                            alert(`Could not search browser history for "${{filename}}". Make sure the VidSnatch extension has history permission.`);
+                        }}
                     }}
                 }}
                 
@@ -4416,6 +4769,276 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     }}
                 }}
                 
+                async function loadSuggestions() {{
+                    const loadBtn = document.getElementById('loadSuggestionsBtn');
+                    const suggestedContainer = document.getElementById('suggestedContainer');
+                    const scanStatus = document.getElementById('scanStatus');
+                    const suggestedDownloads = document.getElementById('suggestedDownloads');
+                    
+                    // Show loading state
+                    loadBtn.disabled = true;
+                    loadBtn.textContent = 'Loading...';
+                    suggestedContainer.style.display = 'block';
+                    scanStatus.textContent = 'Scanning browser history...';
+                    suggestedDownloads.innerHTML = '';
+                    
+                    try {{
+                        // Send message to Chrome extension to scan history
+                        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {{
+                            const response = await new Promise((resolve, reject) => {{
+                                chrome.runtime.sendMessage(
+                                    {{ action: 'scanSuggestedDownloads', days: 7 }},
+                                    (response) => {{
+                                        if (chrome.runtime.lastError) {{
+                                            reject(new Error('Extension communication failed: ' + chrome.runtime.lastError.message));
+                                        }} else {{
+                                            resolve(response);
+                                        }}
+                                    }}
+                                );
+                            }});
+                            
+                            if (response.success) {{
+                                const suggestions = response.suggestions || [];
+                                displaySuggestions(suggestions);
+                                scanStatus.textContent = `Found ${{suggestions.length}} suggested downloads`;
+                            }} else {{
+                                scanStatus.textContent = 'Error: ' + response.error;
+                                suggestedDownloads.innerHTML = `
+                                    <div style="text-align: center; padding: 20px; color: var(--secondary-text-color);">
+                                        ${{response.error}}
+                                    </div>
+                                `;
+                            }}
+                        }} else {{
+                            throw new Error('Chrome extension not available. Please install the VidSnatch browser extension.');
+                        }}
+                    }} catch (error) {{
+                        console.error('Error loading suggestions:', error);
+                        scanStatus.textContent = 'Error loading suggestions';
+                        suggestedDownloads.innerHTML = `
+                            <div style="text-align: center; padding: 20px; color: var(--secondary-text-color);">
+                                ${{error.message}}
+                            </div>
+                        `;
+                    }}
+                    
+                    // Reset button
+                    loadBtn.disabled = false;
+                    loadBtn.textContent = 'Reload Suggestions';
+                }}
+                
+                function displaySuggestions(suggestions) {{
+                    const suggestedDownloads = document.getElementById('suggestedDownloads');
+                    
+                    if (suggestions.length === 0) {{
+                        suggestedDownloads.innerHTML = `
+                            <div style="text-align: center; padding: 20px; color: var(--secondary-text-color);">
+                                No suggested downloads found. Visit video sites more frequently to get suggestions.
+                            </div>
+                        `;
+                        return;
+                    }}
+                    
+                    const suggestionsHtml = suggestions.map(suggestion => `
+                        <div class="suggestion-item">
+                            <div class="suggestion-info">
+                                <div class="suggestion-title">${{suggestion.title}}</div>
+                                <div class="suggestion-url">${{suggestion.url}}</div>
+                                <div class="suggestion-meta">Visited ${{suggestion.visitCount}} times</div>
+                            </div>
+                            <div class="suggestion-actions">
+                                <button class="suggestion-btn download" onclick="downloadSuggestion('${{suggestion.url.replace(/'/g, '\\'')}}}', '${{suggestion.title.replace(/'/g, '\\'')}}')">
+                                    Download
+                                </button>
+                                <button class="suggestion-btn delete" onclick="removeSuggestion('${{suggestion.url.replace(/'/g, '\\'')}}}')">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    suggestedDownloads.innerHTML = suggestionsHtml;
+                }}
+                
+                function removeSuggestion(url) {{
+                    // Find and remove the suggestion item from the display
+                    const suggestionItems = document.querySelectorAll('.suggestion-item');
+                    suggestionItems.forEach(item => {{
+                        const urlElement = item.querySelector('.suggestion-url');
+                        if (urlElement && urlElement.textContent === url) {{
+                            item.remove();
+                        }}
+                    }});
+                    
+                    // Update the count
+                    const remainingCount = document.querySelectorAll('.suggestion-item').length;
+                    const scanStatus = document.getElementById('scanStatus');
+                    scanStatus.textContent = `Found ${{remainingCount}} suggested downloads`;
+                }}
+                
+                // Search/Filter functionality
+                let filteredFilesData = [];
+                
+                function filterFiles(searchTerm) {{
+                    const term = searchTerm.toLowerCase().trim();
+                    
+                    if (!term) {{
+                        // Show all files if search is empty
+                        filteredFilesData = [...filesData];
+                    }} else {{
+                        // Filter files based on search term
+                        filteredFilesData = filesData.filter(file => {{
+                            // Search in filename
+                            const nameMatch = file.name.toLowerCase().includes(term);
+                            
+                            // Search in URL
+                            const urlMatch = (file.url || '').toLowerCase().includes(term);
+                            
+                            // Search in tags
+                            const fileTags = getFileTags(file.name);
+                            const tagsMatch = fileTags.some(tag => tag.toLowerCase().includes(term));
+                            
+                            // Search in person name
+                            const personName = getPersonName(file.name) || '';
+                            const personMatch = personName.toLowerCase().includes(term);
+                            
+                            return nameMatch || urlMatch || tagsMatch || personMatch;
+                        }});
+                    }}
+                    
+                    // Re-render table with filtered data
+                    renderFilteredFilesTable();
+                }}
+                
+                function renderFilteredFilesTable() {{
+                    const fileExplorer = document.getElementById('fileExplorer');
+                    
+                    if (!filteredFilesData.length) {{
+                        if (!filesData.length) {{
+                            fileExplorer.innerHTML = '<div class="empty-state">No files found in downloads folder</div>';
+                        }} else {{
+                            fileExplorer.innerHTML = '<div class="empty-state">No files match your search</div>';
+                        }}
+                        return;
+                    }}
+                    
+                    // Use the existing table rendering logic but with filtered data
+                    const tempOriginalData = filesData;
+                    filesData = filteredFilesData;
+                    renderFilesTable();
+                    filesData = tempOriginalData; // Restore original data
+                }}
+                
+                // Tags system storage and management
+                const fileTags = JSON.parse(localStorage.getItem('fileTags') || '{{}}');
+                
+                function getFileTags(filename) {{
+                    return fileTags[filename] || [];
+                }}
+                
+                function setFileTags(filename, tags) {{
+                    if (tags && tags.length > 0) {{
+                        fileTags[filename] = tags.slice(0, 5); // Limit to 5 tags
+                    }} else {{
+                        delete fileTags[filename];
+                    }}
+                    localStorage.setItem('fileTags', JSON.stringify(fileTags));
+                }}
+                
+                function editTags(filename) {{
+                    const container = document.querySelector(`[data-filename="${{filename}}"]`);
+                    if (!container) return;
+                    
+                    const display = container.querySelector('.tags-display');
+                    const editor = container.querySelector('.tags-editor');
+                    const input = container.querySelector('.tags-input');
+                    
+                    // Show editor, hide display
+                    display.style.display = 'none';
+                    editor.style.display = 'block';
+                    
+                    // Set current tags as comma-separated string
+                    const currentTags = getFileTags(filename);
+                    input.value = currentTags.join(', ');
+                    input.focus();
+                    input.select();
+                }}
+                
+                function saveTags(filename) {{
+                    const container = document.querySelector(`[data-filename="${{filename}}"]`);
+                    if (!container) return;
+                    
+                    const display = container.querySelector('.tags-display');
+                    const editor = container.querySelector('.tags-editor');
+                    const input = container.querySelector('.tags-input');
+                    
+                    // Parse tags from input
+                    const tagString = input.value.trim();
+                    const tags = tagString ? tagString.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0) : [];
+                    
+                    // Save tags
+                    setFileTags(filename, tags);
+                    
+                    // Update display
+                    updateTagsDisplay(filename);
+                    
+                    // Show display, hide editor
+                    display.style.display = 'flex';
+                    editor.style.display = 'none';
+                }}
+                
+                function handleTagsKeypress(event, filename) {{
+                    if (event.key === 'Enter') {{
+                        event.preventDefault();
+                        saveTags(filename);
+                    }} else if (event.key === 'Escape') {{
+                        event.preventDefault();
+                        cancelTagsEdit(filename);
+                    }}
+                }}
+                
+                function cancelTagsEdit(filename) {{
+                    const container = document.querySelector(`[data-filename="${{filename}}"]`);
+                    if (!container) return;
+                    
+                    const display = container.querySelector('.tags-display');
+                    const editor = container.querySelector('.tags-editor');
+                    
+                    // Show display, hide editor
+                    display.style.display = 'flex';
+                    editor.style.display = 'none';
+                }}
+                
+                function updateTagsDisplay(filename) {{
+                    const container = document.querySelector(`[data-filename="${{filename}}"]`);
+                    if (!container) return;
+                    
+                    const display = container.querySelector('.tags-display');
+                    const tags = getFileTags(filename);
+                    
+                    if (tags.length === 0) {{
+                        display.innerHTML = '<span class="empty">Click to add tags</span>';
+                        display.className = 'tags-display empty';
+                    }} else {{
+                        const tagsHTML = tags.map(tag => `
+                            <span class="tag-badge" title="${{tag}}">${{tag}}</span>
+                        `).join('');
+                        display.innerHTML = tagsHTML;
+                        display.className = 'tags-display';
+                    }}
+                }}
+                
+                function initializeAllTagsDisplays() {{
+                    // Initialize tags display for all files
+                    document.querySelectorAll('.tags-container').forEach(container => {{
+                        const filename = container.getAttribute('data-filename');
+                        if (filename) {{
+                            updateTagsDisplay(filename);
+                        }}
+                    }});
+                }}
+
                 async function openUninstaller() {{
                     try {{
                         const response = await fetch('/uninstall');

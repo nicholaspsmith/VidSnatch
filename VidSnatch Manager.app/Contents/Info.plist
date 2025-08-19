@@ -16,6 +16,8 @@
     <string>APPL</string>
     <key>CFBundleSignature</key>
     <string>VSMT</string>
+    <key>CFBundleIconFile</key>
+    <string>app_icon</string>
     <key>LSUIElement</key>
     <false/>
     <key>NSHighResolutionCapable</key>

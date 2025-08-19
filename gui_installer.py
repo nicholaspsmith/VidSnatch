@@ -44,6 +44,12 @@ class VidSnatchInstaller:
         self.is_installed = self.check_installation()
         self.update_status()
         
+        # Show current status in output window
+        if self.is_installed:
+            self.log_output("✅ VidSnatch is currently INSTALLED")
+        else:
+            self.log_output("❌ VidSnatch is currently NOT INSTALLED")
+        
     def center_window(self):
         self.root.update_idletasks()
         width = self.root.winfo_width()
@@ -51,6 +57,12 @@ class VidSnatchInstaller:
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Ensure window is brought to front and focused
+        self.root.lift()
+        self.root.attributes('-topmost', True)
+        self.root.after(100, lambda: self.root.attributes('-topmost', False))
+        self.root.focus_force()
         
     def setup_ui(self):
         # Main frame
@@ -237,6 +249,124 @@ class VidSnatchInstaller:
         self.output_text.see(tk.END)
         self.root.update()
         
+    def show_custom_confirmation(self, title, message):
+        """Show a custom confirmation dialog that doesn't un-minimize other apps"""
+        # Create a new dialog window
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("400x200")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)  # Make it stay on top of parent
+        dialog.grab_set()  # Make it modal
+        
+        # Center the dialog on the parent window
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 200
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 100
+        dialog.geometry(f"400x200+{x}+{y}")
+        
+        # Store the result
+        result = tk.BooleanVar()
+        result.set(False)
+        
+        # Create the dialog content
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.grid(row=0, column=0, sticky='nsew')
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
+        
+        # Message label
+        message_label = ttk.Label(main_frame, text=message, wraplength=350, justify='center')
+        message_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
+        
+        # Buttons frame
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.grid(row=1, column=0, columnspan=2)
+        
+        def on_yes():
+            result.set(True)
+            dialog.destroy()
+            
+        def on_no():
+            result.set(False)
+            dialog.destroy()
+        
+        yes_button = ttk.Button(buttons_frame, text="Yes", command=on_yes, width=10)
+        yes_button.grid(row=0, column=0, padx=(0, 10))
+        
+        no_button = ttk.Button(buttons_frame, text="No", command=on_no, width=10)
+        no_button.grid(row=0, column=1, padx=(10, 0))
+        
+        # Set focus to No button (safer default)
+        no_button.focus_set()
+        
+        # Handle window close as "No"
+        dialog.protocol("WM_DELETE_WINDOW", on_no)
+        
+        # Wait for the dialog to close
+        dialog.wait_window()
+        
+        return result.get()
+        
+    def show_custom_error(self, title, message):
+        """Show a custom error dialog that doesn't un-minimize other apps"""
+        self._show_custom_info_dialog(title, message, "Error", "#d63447")
+        
+    def show_custom_info(self, title, message):
+        """Show a custom info dialog that doesn't un-minimize other apps"""
+        self._show_custom_info_dialog(title, message, "Information", "#3d4db7")
+        
+    def _show_custom_info_dialog(self, title, message, dialog_type, color):
+        """Helper method for custom info/error dialogs"""
+        # Create a new dialog window
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("450x250")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)  # Make it stay on top of parent
+        dialog.grab_set()  # Make it modal
+        
+        # Center the dialog on the parent window
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 225
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 125
+        dialog.geometry(f"450x250+{x}+{y}")
+        
+        # Create the dialog content
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.grid(row=0, column=0, sticky='nsew')
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
+        
+        # Icon and title frame
+        header_frame = ttk.Frame(main_frame)
+        header_frame.grid(row=0, column=0, sticky='ew', pady=(0, 15))
+        
+        icon = "❌" if dialog_type == "Error" else "ℹ️"
+        icon_label = ttk.Label(header_frame, text=icon, font=("Arial", 20))
+        icon_label.grid(row=0, column=0, padx=(0, 10))
+        
+        title_label = ttk.Label(header_frame, text=dialog_type, font=("Arial", 12, "bold"))
+        title_label.grid(row=0, column=1, sticky='w')
+        
+        # Message label
+        message_label = ttk.Label(main_frame, text=message, wraplength=400, justify='left')
+        message_label.grid(row=1, column=0, pady=(0, 20), sticky='ew')
+        
+        # OK button
+        def on_ok():
+            dialog.destroy()
+        
+        ok_button = ttk.Button(main_frame, text="OK", command=on_ok, width=10)
+        ok_button.grid(row=2, column=0)
+        ok_button.focus_set()
+        
+        # Handle window close
+        dialog.protocol("WM_DELETE_WINDOW", on_ok)
+        
+        # Wait for the dialog to close
+        dialog.wait_window()
+        
     def disable_buttons(self):
         """Disable all buttons during operations"""
         self.install_button.config(state="disabled")
@@ -307,7 +437,7 @@ class VidSnatchInstaller:
         
     def uninstall_vidsnatch(self):
         """Uninstall VidSnatch"""
-        if not messagebox.askyesno("Confirm Uninstall", 
+        if not self.show_custom_confirmation("Confirm Uninstall", 
                                   "Are you sure you want to uninstall VidSnatch?\n\n"
                                   "This will remove all VidSnatch files and stop all processes."):
             return
@@ -342,7 +472,7 @@ class VidSnatchInstaller:
         
     def reinstall_vidsnatch(self):
         """Reinstall VidSnatch (uninstall then install)"""
-        if not messagebox.askyesno("Confirm Reinstall", 
+        if not self.show_custom_confirmation("Confirm Reinstall", 
                                   "Are you sure you want to reinstall VidSnatch?\n\n"
                                   "This will first uninstall the current version, then install a fresh copy."):
             return
@@ -395,13 +525,13 @@ class VidSnatchInstaller:
                 
                 # Check if VidSnatch is installed
                 if not self.check_installation():
-                    messagebox.showerror("Error", "Please install VidSnatch first before setting up the Chrome extension.")
+                    self.show_custom_error("Error", "Please install VidSnatch first before setting up the Chrome extension.")
                     return
                 
                 extension_dir = os.path.join(self.install_dir, "chrome-extension")
                 
                 if not os.path.exists(extension_dir):
-                    messagebox.showerror("Error", f"Chrome extension files not found at {extension_dir}")
+                    self.show_custom_error("Error", f"Chrome extension files not found at {extension_dir}")
                     return
                 
                 self.log_output("📋 Instructions for Chrome Extension Setup:")
@@ -422,7 +552,7 @@ class VidSnatchInstaller:
                     subprocess.run(["open", extension_dir], check=True)
                     self.log_output(f"✅ Extension directory opened: {extension_dir}")
                     
-                    messagebox.showinfo("Chrome Extension Setup", 
+                    self.show_custom_info("Chrome Extension Setup", 
                                       "Chrome Extensions page and extension folder have been opened.\n\n"
                                       "Follow these steps:\n"
                                       "1. Enable 'Developer mode' in Chrome\n"
@@ -432,11 +562,11 @@ class VidSnatchInstaller:
                                       
                 except subprocess.CalledProcessError as e:
                     self.log_output(f"❌ Error opening Chrome: {e}")
-                    messagebox.showerror("Error", f"Could not open Chrome. Please manually navigate to chrome://extensions/ and load the extension from:\n{extension_dir}")
+                    self.show_custom_error("Error", f"Could not open Chrome. Please manually navigate to chrome://extensions/ and load the extension from:\n{extension_dir}")
                     
             except Exception as e:
                 self.log_output(f"❌ Extension setup error: {e}")
-                messagebox.showerror("Error", f"Extension setup error: {e}")
+                self.show_custom_error("Error", f"Extension setup error: {e}")
                 
         threading.Thread(target=extension_thread, daemon=True).start()
         

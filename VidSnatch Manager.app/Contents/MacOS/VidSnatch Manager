@@ -2,35 +2,44 @@
 # VidSnatch Manager Launcher
 # This script launches the graphical manager without opening Terminal
 
+# Set up error handling
+set -e
+
 # Get the directory containing this app bundle
 APP_DIR="$(cd "$(dirname "$0")/../../../" && pwd)"
-cd "$APP_DIR"
+
+# Change to the app directory
+if ! cd "$APP_DIR"; then
+    osascript -e 'display alert "VidSnatch Manager Error" message "Could not access VidSnatch directory: '"$APP_DIR"'"' >/dev/null 2>&1 &
+    exit 1
+fi
 
 # Check if GUI manager exists
 if [[ ! -f "gui_installer.py" ]]; then
-    osascript -e 'display alert "VidSnatch Manager Error" message "VidSnatch Manager not found! Please run ./build-installer.sh first to create the manager package."'
+    osascript -e 'display alert "VidSnatch Manager Error" message "VidSnatch Manager not found! Please run ./build-installer.sh first to create the manager package."' >/dev/null 2>&1 &
     exit 1
 fi
 
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
-    osascript -e 'display alert "Python 3 Required" message "Python 3 is not installed! Please install Python 3 from https://www.python.org/"'
+    osascript -e 'display alert "Python 3 Required" message "Python 3 is not installed! Please install Python 3 from https://www.python.org/"' >/dev/null 2>&1 &
     exit 1
 fi
 
 # Check if tkinter is available
-python3 -c "import tkinter" 2>/dev/null
-if [[ $? -ne 0 ]]; then
-    # Try to install tkinter via homebrew
-    if command -v brew &> /dev/null; then
-        osascript -e 'display notification "Installing python-tk via Homebrew..." with title "VidSnatch Manager"'
-        brew install python-tk 2>/dev/null
-    else
-        osascript -e 'display alert "tkinter Required" message "tkinter not available. Please install it with: brew install python-tk" & "Falling back to command line manager..."'
-        python3 gui_installer.py
-        exit $?
-    fi
+if ! python3 -c "import tkinter" 2>/dev/null; then
+    osascript -e 'display alert "tkinter Required" message "tkinter not available. Please install it with: brew install python-tk"' >/dev/null 2>&1 &
+    exit 1
 fi
 
-# Launch the GUI installer/uninstaller silently
-python3 gui_installer.py
+# Launch the GUI installer/uninstaller and ensure it's visible
+python3 gui_installer.py &
+GUI_PID=$!
+
+# Use AppleScript to bring Python app to front (after brief delay)
+sleep 0.5
+osascript -e 'tell application "System Events" to set frontmost of first process whose name contains "Python" to true' 2>/dev/null || true
+
+# Disown the process and exit
+disown $GUI_PID 2>/dev/null || true
+exit 0
