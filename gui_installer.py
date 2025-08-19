@@ -477,23 +477,7 @@ class VidSnatchInstaller:
                 shutil.rmtree(ext_dst)
             shutil.copytree(ext_src, ext_dst)
         
-        # Create desktop shortcut for extension installation
-        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
-        shortcut_content = f'''#!/bin/bash
-echo "🌐 Opening Chrome Extensions page..."
-echo "📋 Instructions:"
-echo "1. Enable 'Developer mode' (toggle in top-right)"
-echo "2. Click 'Load unpacked'"
-echo "3. Navigate to: {self.install_dir}/chrome-extension"
-echo "4. Select the chrome-extension folder"
-echo ""
-read -p "Press Enter to open Chrome Extensions page..."
-open -a "Google Chrome" chrome://extensions/
-'''
-        
-        with open(desktop_shortcut, 'w') as f:
-            f.write(shortcut_content)
-        os.chmod(desktop_shortcut, 0o755)
+        # Desktop shortcut creation removed - user should use main installer shortcut
         
         # Create launch scripts
         self.create_launch_scripts()
@@ -571,11 +555,14 @@ open -a "Google Chrome" chrome://extensions/
             shutil.rmtree(app_path)
             self.log_output("✅ Removed ~/Applications/VidSnatch.app")
             
-        # Remove desktop shortcuts
-        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
-        if os.path.exists(desktop_shortcut):
-            os.remove(desktop_shortcut)
-            self.log_output("✅ Removed desktop shortcut")
+        # Remove any old desktop shortcuts
+        old_shortcuts = [
+            os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
+        ]
+        for shortcut in old_shortcuts:
+            if os.path.exists(shortcut):
+                os.remove(shortcut)
+                self.log_output(f"✅ Removed old desktop shortcut: {os.path.basename(shortcut)}")
             
         return True
         
@@ -737,23 +724,7 @@ except Exception as e:
                 shutil.rmtree(ext_dst)
             shutil.copytree(ext_src, ext_dst)
         
-        # Create desktop shortcut for extension installation
-        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
-        shortcut_content = f'''#!/bin/bash
-echo "🌐 Opening Chrome Extensions page..."
-echo "📋 Instructions:"
-echo "1. Enable 'Developer mode' (toggle in top-right)"
-echo "2. Click 'Load unpacked'"
-echo "3. Navigate to: {self.install_dir}/chrome-extension"
-echo "4. Select the chrome-extension folder"
-echo ""
-read -p "Press Enter to open Chrome Extensions page..."
-open -a "Google Chrome" chrome://extensions/
-'''
-        
-        with open(desktop_shortcut, 'w') as f:
-            f.write(shortcut_content)
-        os.chmod(desktop_shortcut, 0o755)
+        # Desktop shortcut creation removed - user should use main installer shortcut
         
         # Create launch scripts
         self.create_launch_scripts()
@@ -808,11 +779,14 @@ open -a "Google Chrome" chrome://extensions/
             shutil.rmtree(app_path)
             print("✅ Removed ~/Applications/VidSnatch.app")
             
-        # Remove desktop shortcuts
-        desktop_shortcut = os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
-        if os.path.exists(desktop_shortcut):
-            os.remove(desktop_shortcut)
-            print("✅ Removed desktop shortcut")
+        # Remove any old desktop shortcuts
+        old_shortcuts = [
+            os.path.expanduser("~/Desktop/Install VidSnatch Extension.command")
+        ]
+        for shortcut in old_shortcuts:
+            if os.path.exists(shortcut):
+                os.remove(shortcut)
+                print(f"✅ Removed old desktop shortcut: {os.path.basename(shortcut)}")
             
         return True
 
