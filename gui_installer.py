@@ -27,7 +27,7 @@ class VidSnatchInstaller:
     def __init__(self, root):
         self.root = root
         self.root.title("VidSnatch Manager")
-        self.root.geometry("700x700")
+        self.root.geometry("700x800")
         self.root.resizable(False, False)
         
         # Center the window on screen
@@ -90,7 +90,7 @@ class VidSnatchInstaller:
         status_frame.columnconfigure(0, weight=1)
         
         self.status_label = ttk.Label(status_frame, text="Checking installation...", 
-                                     font=("Helvetica", 12), wraplength=460)
+                                     font=("TkDefaultFont", 9), wraplength=460)
         self.status_label.grid(row=0, column=0)
         
         # Buttons frame - create centered frame to match other container widths
@@ -150,7 +150,7 @@ class VidSnatchInstaller:
         output_frame = ttk.LabelFrame(output_outer_frame, text="Installation Output", padding="5")
         output_frame.grid(row=0, column=0)
         
-        self.output_text = scrolledtext.ScrolledText(output_frame, height=12, width=65)
+        self.output_text = scrolledtext.ScrolledText(output_frame, height=15, width=65)
         self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Chrome Extension section - fixed width to match other containers

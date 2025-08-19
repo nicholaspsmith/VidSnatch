@@ -126,9 +126,100 @@ class VidSnatchMenuBar:
         self.update_menu(icon)
     
     def open_web_interface(self, icon, item):
-        """Open the web interface in browser"""
+        """Open the web interface in browser with smart tab handling"""
         import webbrowser
-        webbrowser.open("http://localhost:8080")
+        import subprocess
+        import platform
+        
+        web_url = "http://localhost:8080"
+        
+        # On macOS, try to use AppleScript to find existing tabs
+        if platform.system() == "Darwin":
+            try:
+                # Try to find existing tab in common browsers and switch to it
+                browsers_to_check = [
+                    ("Arc", '''
+                        tell application "Arc"
+                            if it is running then
+                                set tabFound to false
+                                repeat with w in windows
+                                    repeat with t in tabs of w
+                                        if URL of t contains "localhost:8080" then
+                                            set active tab of w to t
+                                            activate
+                                            set tabFound to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+                                    if tabFound then exit repeat
+                                end repeat
+                                return tabFound
+                            end if
+                        end tell
+                    '''),
+                    ("Safari", '''
+                        tell application "Safari"
+                            if it is running then
+                                set tabFound to false
+                                repeat with w in windows
+                                    repeat with t in tabs of w
+                                        if URL of t contains "localhost:8080" then
+                                            set current tab of w to t
+                                            activate
+                                            set tabFound to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+                                    if tabFound then exit repeat
+                                end repeat
+                                return tabFound
+                            end if
+                        end tell
+                    '''),
+                    ("Google Chrome", '''
+                        tell application "Google Chrome"
+                            if it is running then
+                                set tabFound to false
+                                repeat with w in windows
+                                    repeat with t in tabs of w
+                                        if URL of t contains "localhost:8080" then
+                                            set active tab index of w to index of t
+                                            activate
+                                            set tabFound to true
+                                            exit repeat
+                                        end if
+                                    end repeat
+                                    if tabFound then exit repeat
+                                end repeat
+                                return tabFound
+                            end if
+                        end tell
+                    ''')
+                ]
+                
+                # Try each browser to find existing tab
+                for browser_name, applescript in browsers_to_check:
+                    try:
+                        result = subprocess.run(
+                            ["osascript", "-e", applescript],
+                            capture_output=True, text=True, timeout=3
+                        )
+                        if result.returncode == 0 and "true" in result.stdout:
+                            print(f"Switched to existing tab in {browser_name}")
+                            return
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        continue
+                
+                # If no existing tab found, open in default browser
+                webbrowser.open(web_url)
+                
+            except Exception as e:
+                print(f"Error with smart tab handling: {e}")
+                # Fallback to default browser
+                webbrowser.open(web_url)
+        else:
+            # Non-macOS systems use default browser
+            webbrowser.open(web_url)
     
     def quit_app(self, icon, item):
         """Quit the application"""

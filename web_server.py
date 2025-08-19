@@ -2237,7 +2237,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .tagline {{
-                    color: #666;
+                    color: var(--text-color);
+                    opacity: 0.7;
                     font-size: 1.2rem;
                     margin-bottom: 20px;
                 }}
@@ -2259,7 +2260,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 .card h3 {{
                     margin-bottom: 20px;
-                    color: #333;
+                    color: var(--text-color);
                     font-size: 1.4rem;
                     display: flex;
                     align-items: center;
@@ -2270,7 +2271,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     width: 12px;
                     height: 12px;
                     border-radius: 50%;
-                    background: #4caf50;
+                    background: var(--btn-bg);
                     animation: pulse 2s infinite;
                 }}
                 
@@ -2291,14 +2292,14 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     position: relative;
                     width: 60px;
                     height: 30px;
-                    background: #ddd;
+                    background: var(--toggle-bg);
                     border-radius: 15px;
                     cursor: pointer;
                     transition: all 0.3s ease;
                 }}
                 
                 .toggle-switch.active {{
-                    background: #4caf50;
+                    background: var(--toggle-active-bg);
                 }}
                 
                 .toggle-switch .slider {{
@@ -2323,7 +2324,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     gap: 10px;
                     margin: 15px 0;
                     padding: 10px;
-                    background: #e8e9eb;
+                    background: var(--input-bg);
+                    border: 1px solid var(--input-border);
                     border-radius: 8px;
                 }}
                 
@@ -2331,7 +2333,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     flex: 1;
                     font-family: monospace;
                     font-size: 0.9rem;
-                    color: #666;
+                    color: var(--text-color);
+                    opacity: 0.8;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
@@ -2448,26 +2451,26 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .files-table th[onclick]:hover {{
-                    background: #ebebeb;
+                    background: var(--table-hover-bg);
                 }}
                 
                 .files-table tbody tr {{
-                    border-bottom: 1px solid #f0f0f0;
+                    border-bottom: 1px solid var(--table-border);
                     transition: background 0.2s ease;
                     cursor: pointer;
                 }}
                 
                 .files-table tbody tr:hover {{
-                    background: #f9f9f9;
+                    background: var(--table-hover-bg);
                 }}
                 
                 .files-table tbody tr.partial-file {{
-                    background: #fff9f0;
+                    background: var(--table-partial-bg);
                     cursor: default;
                 }}
                 
                 .files-table tbody tr.playing {{
-                    background: #e8f4ff;
+                    background: var(--table-playing-bg);
                 }}
                 
                 .files-table td {{
@@ -2491,6 +2494,22 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     white-space: nowrap;
                 }}
                 
+                .name-input {{
+                    width: 100% !important;
+                    border: 1px solid var(--input-border) !important;
+                    background: var(--input-bg) !important;
+                    color: var(--text-color) !important;
+                    padding: 2px 4px !important;
+                    border-radius: 2px !important;
+                    font-size: 12px !important;
+                    transition: border-color 0.2s ease !important;
+                }}
+                
+                .name-input:focus {{
+                    outline: none !important;
+                    border-color: var(--btn-bg) !important;
+                }}
+                
                 .file-actions {{
                     display: flex;
                     gap: 5px;
@@ -2506,21 +2525,21 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .file-btn.retry {{
-                    background: #4caf50;
+                    background: var(--btn-bg);
                     color: white;
                 }}
                 
                 .file-btn.retry:hover {{
-                    background: #45a049;
+                    background: var(--btn-hover-bg);
                 }}
                 
                 .file-btn.delete {{
-                    background: #f44336;
+                    background: var(--btn-danger-bg);
                     color: white;
                 }}
                 
                 .file-btn.delete:hover {{
-                    background: #da190b;
+                    background: var(--btn-danger-hover-bg);
                 }}
                 
                 /* Keep existing styles for compatibility */
@@ -3002,6 +3021,22 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             <script>
                 let currentFolder = '';
                 
+                // Person names storage
+                const personNames = JSON.parse(localStorage.getItem('personNames') || '{{}}');
+                
+                function getPersonName(filename) {{
+                    return personNames[filename] || '';
+                }}
+                
+                function savePersonName(filename, name) {{
+                    if (name.trim()) {{
+                        personNames[filename] = name.trim();
+                    }} else {{
+                        delete personNames[filename];
+                    }}
+                    localStorage.setItem('personNames', JSON.stringify(personNames));
+                }}
+                
                 // Dark mode functionality
                 function initializeTheme() {{
                     const themeToggle = document.getElementById('themeToggle');
@@ -3081,6 +3116,10 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                 aVal = a.name.toLowerCase();
                                 bVal = b.name.toLowerCase();
                                 break;
+                            case 'name':
+                                aVal = (getPersonName(a.name) || '').toLowerCase();
+                                bVal = (getPersonName(b.name) || '').toLowerCase();
+                                break;
                             case 'size':
                                 aVal = a.sizeBytes;
                                 bVal = b.sizeBytes;
@@ -3113,14 +3152,17 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         <table class="files-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 40%; cursor: pointer;" onclick="sortFiles('title')" title="Sort by title">
+                                    <th style="width: 30%; cursor: pointer;" onclick="sortFiles('title')" title="Sort by title">
                                         Title ${{currentSort.column === 'title' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                     </th>
-                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
+                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
+                                        Name ${{currentSort.column === 'name' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                    </th>
+                                    <th style="width: 12%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
                                         File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                     </th>
-                                    <th style="width: 15%">Length</th>
-                                    <th style="width: 30%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
+                                    <th style="width: 12%">Length</th>
+                                    <th style="width: 31%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
                                         Date Added ${{currentSort.column === 'date' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                     </th>
                                 </tr>
@@ -3154,6 +3196,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                     
                                     const dateAdded = formatHumanDate(file.timestamp);
                                     
+                                    const personName = getPersonName(file.name) || '';
+                                    
                                     return `
                                         <tr class="${{rowClass}}" data-filename="${{file.name}}" ${{clickHandler}} style="cursor: ${{clickHandler ? 'pointer' : 'default'}}">
                                             <td>
@@ -3161,6 +3205,12 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                                     <span>${{icon}}</span>
                                                     <span class="file-name-text" title="${{file.name}}">${{file.name}}</span>
                                                 </div>
+                                            </td>
+                                            <td>
+                                                <input type="text" class="name-input" value="${{personName}}" 
+                                                       placeholder="Enter name..." 
+                                                       onclick="event.stopPropagation()" 
+                                                       onchange="savePersonName('${{file.name}}', this.value)">
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>${{length}}</td>
