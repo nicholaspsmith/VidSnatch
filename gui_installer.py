@@ -127,7 +127,7 @@ class VidSnatchInstaller:
         output_frame = ttk.LabelFrame(main_frame, text="Installation Output", padding="5")
         output_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         
-        self.output_text = scrolledtext.ScrolledText(output_frame, height=12, width=70)
+        self.output_text = scrolledtext.ScrolledText(output_frame, height=8, width=70)
         self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Chrome Extension section
@@ -151,15 +151,16 @@ class VidSnatchInstaller:
                                      command=self.setup_chrome_extension, style='Large.TButton')
         extension_button.grid(row=1, column=0, pady=(0, 5))
         
-        # Close button - add bottom padding for better visual balance
+        # Close button - center between Chrome extension and bottom
         close_button = ttk.Button(main_frame, text="Close", command=self.root.quit, width=15)
-        close_button.grid(row=7, column=0, columnspan=2, pady=(20, 20))
+        close_button.grid(row=7, column=0, columnspan=2, pady=(15, 15))
         
-        # Configure grid weights
+        # Configure grid weights - distribute space better
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(5, weight=1)
+        main_frame.rowconfigure(5, weight=1)  # Output area gets most space
+        main_frame.rowconfigure(7, weight=0)  # Close button row - no expansion
         output_frame.columnconfigure(0, weight=1)
         output_frame.rowconfigure(0, weight=1)
         
