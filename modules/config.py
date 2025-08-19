@@ -17,7 +17,7 @@ REQUIRED_PACKAGES = {
     "yt_dlp": "yt-dlp",
 }
 
-DEFAULT_OUTPUT_TEMPLATE = "%(uploader)s - %(title)s - %(id)s.%(ext)s"
+DEFAULT_OUTPUT_TEMPLATE = "%(title)s.%(ext)s"
 
 DEBUG = False
 

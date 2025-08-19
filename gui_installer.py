@@ -122,10 +122,13 @@ class VidSnatchInstaller:
         extension_frame = ttk.LabelFrame(main_frame, text="Chrome Extension Setup", padding="10")
         extension_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 10))
         
+        # Configure extension frame to center content
+        extension_frame.columnconfigure(0, weight=1)
+        
         extension_info = ttk.Label(extension_frame, 
                                   text="After installing VidSnatch, set up the Chrome extension to download videos directly from web pages.",
                                   wraplength=500, justify=tk.CENTER)
-        extension_info.grid(row=0, column=0, pady=(0, 10))
+        extension_info.grid(row=0, column=0, pady=(0, 10), sticky='ew')
         
         extension_button = ttk.Button(extension_frame, text="🌐 Setup Chrome Extension", 
                                      command=self.setup_chrome_extension, style='Large.TButton')
@@ -424,9 +427,34 @@ class VidSnatchInstaller:
             if not self.run_command(f"'{pip_path}' install -r '{requirements_path}'", "Installing dependencies"):
                 return False
         
+        # Install additional dependencies needed for menu bar app
+        menu_bar_deps = ["requests", "pillow", "pystray"]
+        for dep in menu_bar_deps:
+            if not self.run_command(f"'{pip_path}' install {dep}", f"Installing {dep} for menu bar app"):
+                return False
+        
         # Install menu bar app
         self.log_output("📱 Installing menu bar app...")
-        app_src = os.path.join(self.current_dir, "VidSnatch.app")
+        # Try multiple possible locations for the app bundle
+        possible_app_paths = [
+            os.path.join(self.current_dir, "VidSnatch.app"),
+            os.path.join(self.current_dir, "macos-app", "VidSnatch.app"),
+            os.path.join(self.current_dir, "macos-installer", "VidSnatch.app")
+        ]
+        
+        app_src = None
+        for path in possible_app_paths:
+            if os.path.exists(path):
+                app_src = path
+                self.log_output(f"✅ Found VidSnatch.app at: {path}")
+                break
+                
+        if not app_src:
+            self.log_output("❌ Could not find VidSnatch.app in any expected location:")
+            for path in possible_app_paths:
+                self.log_output(f"   - Checked: {path}")
+            return False
+            
         app_dst = os.path.expanduser("~/Applications/VidSnatch.app")
         
         if os.path.exists(app_src):
@@ -584,15 +612,24 @@ try:
     python_path = "{venv_python}"
     app_script = os.path.expanduser("~/Applications/VidSnatch.app/Contents/MacOS/VidSnatch")
     
-    # Run with proper environment
+    # Run with proper environment including virtual environment paths
     env = os.environ.copy()
     env['PYTHONPATH'] = os.path.expanduser("~/Applications/VidSnatch")
+    
+    # Add virtual environment to PATH so it can find dependencies
+    venv_bin = os.path.expanduser("~/Applications/VidSnatch/venv/bin")
+    env['PATH'] = venv_bin + ":" + env.get('PATH', '')
+    
+    # Set virtual environment activation
+    env['VIRTUAL_ENV'] = os.path.expanduser("~/Applications/VidSnatch/venv")
     
     subprocess.run([python_path, app_script], env=env)
 except Exception as e:
     print(f"Error launching menu bar app: {{e}}")
-    # Fallback: try with system python
+    # Install required dependencies system-wide as fallback
     try:
+        print("Installing required dependencies...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "--break-system-packages", "requests", "pillow", "pystray"], check=True)
         subprocess.run([sys.executable, os.path.expanduser("~/Applications/VidSnatch.app/Contents/MacOS/VidSnatch")])
     except Exception as e2:
         print(f"Fallback also failed: {{e2}}")
@@ -646,9 +683,38 @@ except Exception as e:
                 print(f"❌ Error installing dependencies: {result.stderr}")
                 return False
         
+        # Install additional dependencies needed for menu bar app
+        menu_bar_deps = ["requests", "pillow", "pystray"]
+        for dep in menu_bar_deps:
+            print(f"Installing {dep} for menu bar app...")
+            result = subprocess.run(f"'{pip_path}' install {dep}", 
+                                  shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"❌ Error installing {dep}: {result.stderr}")
+                return False
+        
         # Install menu bar app
         print("📱 Installing menu bar app...")
-        app_src = os.path.join(self.current_dir, "VidSnatch.app")
+        # Try multiple possible locations for the app bundle
+        possible_app_paths = [
+            os.path.join(self.current_dir, "VidSnatch.app"),
+            os.path.join(self.current_dir, "macos-app", "VidSnatch.app"),
+            os.path.join(self.current_dir, "macos-installer", "VidSnatch.app")
+        ]
+        
+        app_src = None
+        for path in possible_app_paths:
+            if os.path.exists(path):
+                app_src = path
+                print(f"✅ Found VidSnatch.app at: {path}")
+                break
+                
+        if not app_src:
+            print("❌ Could not find VidSnatch.app in any expected location:")
+            for path in possible_app_paths:
+                print(f"   - Checked: {path}")
+            return False
+            
         app_dst = os.path.expanduser("~/Applications/VidSnatch.app")
         
         if os.path.exists(app_src):

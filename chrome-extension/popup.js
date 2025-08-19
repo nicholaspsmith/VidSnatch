@@ -193,12 +193,45 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
   
+  // Helper function to clean video titles
+  function cleanVideoTitle(title) {
+    if (!title) return title;
+    
+    // Remove "NA - " prefix (case-insensitive)
+    if (title.toLowerCase().startsWith('na - ')) {
+      title = title.substring(5);
+    }
+    
+    // Remove other common unwanted prefixes
+    const prefixesToRemove = [
+      'undefined - ',
+      'null - ',
+      '[object Object] - ',
+      'untitled - '
+    ];
+    
+    const titleLower = title.toLowerCase();
+    for (const prefix of prefixesToRemove) {
+      if (titleLower.startsWith(prefix.toLowerCase())) {
+        title = title.substring(prefix.length);
+        break;
+      }
+    }
+    
+    // Clean up whitespace
+    title = title.trim();
+    
+    // Return default if empty
+    return title || 'Unknown Video';
+  }
+
   function createDownloadElement(downloadId, videoInfo) {
     const downloadItem = document.createElement('div');
     downloadItem.className = 'download-item';
     downloadItem.id = `download-${downloadId}`;
     
-    const title = videoInfo.videoTitle || videoInfo.title || 'Unknown Video';
+    const rawTitle = videoInfo.videoTitle || videoInfo.title || 'Unknown Video';
+    const title = cleanVideoTitle(rawTitle);
     
     // Check if this is the current page video
     const isCurrentVideo = currentVideoInfo && 
@@ -296,7 +329,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
   
-  function markDownloadComplete(downloadId, status) {
+  function markDownloadComplete(downloadId, status, errorMessage = '') {
     const downloadElement = document.getElementById(`download-${downloadId}`);
     if (!downloadElement) return;
     
@@ -306,20 +339,43 @@ document.addEventListener('DOMContentLoaded', async function() {
       downloadElement.querySelector('.progress-text').textContent = 'Download completed!';
     } else if (status === 'error') {
       downloadElement.classList.add('download-error');
+      const progressText = downloadElement.querySelector('.progress-text');
+      progressText.textContent = errorMessage ? `Failed: ${errorMessage}` : 'Download failed';
     } else if (status === 'cancelled') {
       downloadElement.classList.add('download-cancelled');
+      downloadElement.querySelector('.progress-text').textContent = 'Download cancelled';
     }
     
-    // Remove cancel button
+    // Update actions based on status
     const actions = downloadElement.querySelector('.download-actions');
-    actions.innerHTML = `<div style="text-align: center; font-size: 11px; color: #666;">
-      ${status === 'completed' ? '✅ Completed' : status === 'error' ? '❌ Failed' : '⚠️ Cancelled'}
-    </div>`;
-    
-    // Auto-remove after delay
-    setTimeout(() => {
-      removeDownloadFromUI(downloadId);
-    }, 5000);
+    if (status === 'completed') {
+      actions.innerHTML = `<div style="text-align: center; font-size: 11px; color: #666;">✅ Completed</div>`;
+      // Auto-remove completed downloads after delay
+      setTimeout(() => {
+        removeDownloadFromUI(downloadId);
+      }, 5000);
+    } else if (status === 'error') {
+      // Keep failed downloads with retry/delete options
+      actions.innerHTML = `
+        <button class="cancel-btn" onclick="retryDownload('${downloadId}')" style="background: #4caf50;" title="Retry download">
+          🔄 Retry
+        </button>
+        <button class="cancel-btn" onclick="deleteDownload('${downloadId}')" title="Delete download and clean up files">
+          🗑️ Delete
+        </button>
+      `;
+    } else if (status === 'cancelled') {
+      // Keep cancelled downloads with delete option
+      actions.innerHTML = `
+        <button class="cancel-btn" onclick="deleteDownload('${downloadId}')" title="Remove from list">
+          🗑️ Remove
+        </button>
+      `;
+      // Auto-remove cancelled downloads after longer delay
+      setTimeout(() => {
+        removeDownloadFromUI(downloadId);
+      }, 10000);
+    }
   }
   
   async function checkForActiveDownloads() {
@@ -414,8 +470,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
             
           } else if (progress.status === 'error') {
-            markDownloadComplete(downloadId, 'error');
-            activeDownloads.delete(downloadId);
+            markDownloadComplete(downloadId, 'error', progress.error);
+            // Don't delete from activeDownloads - keep for retry
             showStatus(`❌ Download failed: ${progress.error}`, 'error');
             
           } else if (progress.status === 'cancelled') {
@@ -464,10 +520,11 @@ document.addEventListener('DOMContentLoaded', async function() {
       return;
     }
     
-    // Display URL info
-    const urlText = videoInfo.videoTitle || videoInfo.title || videoInfo.url;
-    currentUrlDiv.textContent = urlText.length > 100 ? 
-      urlText.substring(0, 100) + '...' : urlText;
+    // Display URL info with cleaned title
+    const rawUrlText = videoInfo.videoTitle || videoInfo.title || videoInfo.url;
+    const cleanUrlText = rawUrlText === videoInfo.url ? rawUrlText : cleanVideoTitle(rawUrlText);
+    currentUrlDiv.textContent = cleanUrlText.length > 100 ? 
+      cleanUrlText.substring(0, 100) + '...' : cleanUrlText;
     
     // Enable/disable download button based on video detection
     const isLikelyVideo = videoInfo.isVideoSite || videoInfo.hasVideoElements || videoInfo.hasVideoKeywords;
@@ -509,7 +566,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         },
         body: JSON.stringify({
           url: currentVideoInfo.url,
-          title: currentVideoInfo.videoTitle || currentVideoInfo.title,
+          title: cleanVideoTitle(currentVideoInfo.videoTitle || currentVideoInfo.title),
           openFolder: openFolderEnabled
         })
       });
@@ -570,6 +627,76 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (error) {
       console.error('Cancel error:', error);
       showStatus('Error cancelling download', 'error');
+    }
+  };
+
+  // Global retry function
+  window.retryDownload = async function(downloadId) {
+    try {
+      const response = await fetch(`http://localhost:8080/retry/${downloadId}`, {
+        method: 'POST'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        showStatus(`🔄 Retrying download (attempt #${result.retry_count})...`, 'info');
+        
+        // Reset the download element to preparing state
+        const downloadElement = document.getElementById(`download-${downloadId}`);
+        if (downloadElement) {
+          downloadElement.classList.remove('download-error', 'download-cancelled');
+          downloadElement.querySelector('.progress-text').textContent = 'Preparing retry...';
+          const progressFill = downloadElement.querySelector('.progress-fill');
+          progressFill.style.width = '0%';
+          
+          // Update actions back to cancel button
+          const actions = downloadElement.querySelector('.download-actions');
+          actions.innerHTML = `
+            <button class="cancel-btn" onclick="cancelDownload('${downloadId}')">
+              ❌ Cancel
+            </button>
+          `;
+        }
+        
+        // Start polling again
+        if (!progressInterval) {
+          startPolling();
+        }
+      } else {
+        showStatus(`❌ Retry failed: ${result.error}`, 'error');
+      }
+      
+    } catch (error) {
+      console.error('Retry error:', error);
+      showStatus('Error retrying download', 'error');
+    }
+  };
+
+  // Global delete function
+  window.deleteDownload = async function(downloadId) {
+    try {
+      const response = await fetch(`http://localhost:8080/delete/${downloadId}`, {
+        method: 'POST'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        showStatus(`🗑️ Download deleted${result.removedFiles?.length ? ' and partial files cleaned up' : ''}`, 'info');
+        
+        // Remove from UI and active downloads
+        removeDownloadFromUI(downloadId);
+        activeDownloads.delete(downloadId);
+        await saveActiveDownloads();
+        
+      } else {
+        showStatus(`❌ Delete failed: ${result.error}`, 'error');
+      }
+      
+    } catch (error) {
+      console.error('Delete error:', error);
+      showStatus('Error deleting download', 'error');
     }
   };
   

@@ -13,12 +13,22 @@ import modules.folderSelector as folderSelector
 
 def download_video(url, download_path):
     """Download a video from the given URL."""
+    
+    def clean_title_hook(d):
+        """Hook to clean video title during extraction."""
+        if d.get('status') == 'finished':
+            # Clean title for display
+            if 'title' in d.get('info_dict', {}):
+                cleaned_title = utilities.clean_video_title(d['info_dict']['title'])
+                print(f" [+] Downloaded: {cleaned_title}")
+    
     ydl_opts = {
         'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
         'socket_timeout': 180,  # 3 minutes socket timeout for slow CDNs
         'retries': 5,  # Retry 5 times on failure  
         'fragment_retries': 5,  # Retry fragments 5 times
         'file_access_retries': 3,  # Retry file access
+        'progress_hooks': [clean_title_hook],
         # Add headers to improve CDN compatibility
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -55,13 +65,131 @@ def download_video(url, download_path):
                 'Referer': 'https://www.pornhub.com/',
             }
         })
+    elif 'xhamster.com' in url:
+        # Add XHamster-specific configuration
+        ydl_opts.update({
+            'retries': 15,
+            'fragment_retries': 15,
+            'sleep_interval_requests': 2,
+            'socket_timeout': 300,
+            'http_headers': {
+                **ydl_opts['http_headers'],
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip,deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Referer': 'https://xhamster.com/',
+            },
+            # Disable SSL verification if needed and use alternate extraction
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'no_warnings': False,
+        })
+    elif 'eporner.com' in url:
+        # Add Eporner-specific configuration to handle hash extraction issues
+        ydl_opts.update({
+            'retries': 20,
+            'fragment_retries': 20,
+            'sleep_interval_requests': 3,
+            'socket_timeout': 300,
+            'http_headers': {
+                **ydl_opts['http_headers'],
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+                'Referer': 'https://www.eporner.com/',
+            },
+            'nocheckcertificate': False,
+            'ignoreerrors': True,  # Try to continue on errors
+            'no_warnings': False,
+            'writesubtitles': False,
+            'writeautomaticsub': False,
+        })
     
     try:
+        # Custom preprocessor to clean titles before file naming
+        class TitleCleanerPP(yt_dlp.postprocessor.PostProcessor):
+            def run(self, info):
+                # Clean the title for file naming
+                if 'title' in info:
+                    original_title = info['title']
+                    cleaned_title = utilities.clean_video_title(original_title)
+                    info['title'] = cleaned_title
+                    if original_title != cleaned_title:
+                        print(f" [+] Cleaned title: '{original_title}' → '{cleaned_title}'")
+                return [], info
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Add the title cleaner postprocessor
+            ydl.add_post_processor(TitleCleanerPP(ydl), when='pre_process')
             ydl.extract_info(url, download=True)
         return True
-    except yt_dlp.DownloadError as e:
-        handle_download_error(e)
+    except (yt_dlp.DownloadError, AttributeError) as e:
+        # Try manual extraction for Eporner if the built-in extractor fails
+        if 'eporner.com' in url and ('Unable to extract hash' in str(e) or isinstance(e, AttributeError)):
+            print(f" [+] Attempting manual Eporner extraction...")
+            try:
+                import requests
+                import re
+                
+                # Get page content
+                response = requests.get(url, 
+                    headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'},
+                    timeout=30)
+                
+                # Extract video URL patterns
+                video_patterns = [
+                    r'src[\s]*=[\s]*["\']([^"\']*\.mp4[^"\']*)["\']',
+                    r'video_url[\s]*=[\s]*["\']([^"\']*\.mp4[^"\']*)["\']',
+                    r'"file"\s*:\s*"([^"]+\.mp4[^"]*)"',
+                    r'source\s+src=["\']([^"\']*\.mp4[^"\']*)["\']',
+                ]
+                
+                video_url = None
+                for pattern in video_patterns:
+                    matches = re.findall(pattern, response.text, re.IGNORECASE)
+                    if matches:
+                        video_url = matches[0]
+                        break
+                
+                if video_url:
+                    print(f" [+] Found direct video URL, downloading...")
+                    
+                    # Create simple options for direct download
+                    direct_opts = {
+                        'outtmpl': os.path.join(download_path, 'Eporner_Video.%(ext)s'),
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                            'Referer': 'https://www.eporner.com/',
+                        }
+                    }
+                    
+                    with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
+                        direct_ydl.download([video_url])
+                    
+                    print(f" [+] Manual Eporner extraction successful!")
+                    return True
+                else:
+                    print(f" [!] Could not find video URL in page content")
+                    
+            except Exception as manual_e:
+                print(f" [!] Manual extraction failed: {manual_e}")
+        
+        # Handle DownloadError specifically
+        if isinstance(e, yt_dlp.DownloadError):
+            handle_download_error(e)
+        else:
+            print(f" [!] Error: Extraction failed - {type(e).__name__}: {e}")
         return False
     except Exception as e:
         print(f" [!] Error: An unexpected error occurred - {type(e).__name__}")

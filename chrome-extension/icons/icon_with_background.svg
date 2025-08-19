@@ -1,17 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a1a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#2d2d2d;stop-opacity:1" />
+    <!-- Gradient for the download arrow -->
+    <linearGradient id="arrowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFB347;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#00e5ff;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#2196f3;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#4caf50;stop-opacity:1" />
+    
+    <!-- Gradient for the warning accent -->
+    <linearGradient id="warningGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FFB347;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#FF8C69;stop-opacity:0.8" />
     </linearGradient>
+    
+    <!-- Shadow filter -->
+    <filter id="dropShadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    
+    <!-- Glow effect -->
     <filter id="glow">
-      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
       <feMerge> 
         <feMergeNode in="coloredBlur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -19,38 +28,52 @@
     </filter>
   </defs>
   
-  <!-- High contrast rounded rectangle background -->
-  <rect x="8" y="8" width="112" height="112" rx="20" ry="20" 
-        fill="url(#bgGrad)" stroke="#444" stroke-width="1"/>
+  <!-- Dark background with rounded corners -->
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" 
+        fill="#1a1a1a" stroke="#333" stroke-width="1"/>
   
-  <!-- Simplified Mercury-inspired logo for better visibility at small sizes -->
-  <!-- Central Mercury symbol with glow effect -->
-  <g filter="url(#glow)">
-    <!-- Main circle (Mercury's core) -->
-    <circle cx="64" cy="58" r="16" fill="none" stroke="url(#logoGrad)" stroke-width="4" opacity="0.9"/>
+  <!-- Subtle grid pattern for web/digital feel -->
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 L 0 0 0 8" fill="none" stroke="#2a2a2a" stroke-width="0.5" opacity="0.3"/>
+    </pattern>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" fill="url(#grid)" opacity="0.1"/>
+  
+  <!-- Main download arrow - centered and prominent -->
+  <g transform="translate(64, 64)" filter="url(#dropShadow)">
+    <!-- Arrow shaft -->
+    <rect x="-6" y="-28" width="12" height="36" fill="url(#arrowGradient)" rx="6"/>
     
-    <!-- Top crescent (Mercury's horns) - simplified -->
-    <path d="M 52 46 A 12 12 0 0 1 76 46" 
-          fill="none" stroke="url(#logoGrad)" stroke-width="3" opacity="0.8"/>
+    <!-- Arrow head - pointing down -->
+    <path d="M -20 8 L 0 32 L 20 8 Z" fill="url(#arrowGradient)" />
     
-    <!-- Side crescents - simplified and more visible -->
-    <path d="M 46 58 A 10 10 0 0 1 46 48 A 10 10 0 0 1 46 68" 
-          fill="url(#logoGrad)" opacity="0.7"/>
-    <path d="M 82 58 A 10 10 0 0 0 82 48 A 10 10 0 0 0 82 68" 
-          fill="url(#logoGrad)" opacity="0.7"/>
-    
-    <!-- Mercury's cross at bottom - more prominent -->
-    <rect x="62" y="74" width="4" height="12" fill="url(#logoGrad)" opacity="0.9" rx="2"/>
-    <rect x="56" y="84" width="16" height="4" fill="url(#logoGrad)" opacity="0.9" rx="2"/>
-    
-    <!-- Central Mercury symbol ☿ -->
-    <text x="64" y="62" font-family="serif" font-size="16" fill="url(#logoGrad)" 
-          text-anchor="middle" dominant-baseline="middle" opacity="0.8">☿</text>
+    <!-- Inner highlight for depth -->
+    <rect x="-4" y="-26" width="8" height="32" fill="#ffffff" opacity="0.2" rx="4"/>
+    <path d="M -16 10 L 0 26 L 16 10 Z" fill="#ffffff" opacity="0.2" />
   </g>
   
-  <!-- Subtle corner accents for visual interest -->
-  <circle cx="24" cy="24" r="3" fill="url(#logoGrad)" opacity="0.3"/>
-  <circle cx="104" cy="24" r="3" fill="url(#logoGrad)" opacity="0.3"/>
-  <circle cx="24" cy="104" r="3" fill="url(#logoGrad)" opacity="0.3"/>
-  <circle cx="104" cy="104" r="3" fill="url(#logoGrad)" opacity="0.3"/>
+  <!-- Subtle warning indicator - small triangle in corner -->
+  <g transform="translate(102, 26)">
+    <path d="M 0 -8 L -7 6 L 7 6 Z" fill="url(#warningGradient)" opacity="0.7"/>
+    <circle cx="0" cy="2" r="1.5" fill="#1a1a1a"/>
+    <rect x="-0.5" y="-4" width="1" height="4" fill="#1a1a1a" rx="0.5"/>
+  </g>
+  
+  <!-- Video/media context indicators - subtle corner elements -->
+  <g opacity="0.4">
+    <!-- Play button suggestion in top-left -->
+    <circle cx="26" cy="26" r="8" fill="none" stroke="#87CEEB" stroke-width="1.5" opacity="0.5"/>
+    <path d="M 23 23 L 23 29 L 29 26 Z" fill="#87CEEB" opacity="0.5"/>
+    
+    <!-- Download completion indicator in bottom-right -->
+    <circle cx="102" cy="102" r="8" fill="none" stroke="#FFB347" stroke-width="1.5" opacity="0.5"/>
+    <path d="M 98 102 L 101 105 L 106 100" fill="none" stroke="#FFB347" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  </g>
+  
+  <!-- Subtle pulse rings around main arrow for attention -->
+  <g transform="translate(64, 64)" opacity="0.1">
+    <circle r="45" fill="none" stroke="#87CEEB" stroke-width="1"/>
+    <circle r="50" fill="none" stroke="#FFB347" stroke-width="0.5"/>
+  </g>
 </svg>

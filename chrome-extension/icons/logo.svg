@@ -1,39 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1976d2;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#2196f3;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#4caf50;stop-opacity:1" />
+    <!-- Gradient for the download arrow -->
+    <linearGradient id="arrowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFB347;stop-opacity:1" />
     </linearGradient>
+    
+    <!-- Gradient for the warning accent -->
+    <linearGradient id="warningGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FFB347;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#FF8C69;stop-opacity:0.8" />
+    </linearGradient>
+    
+    <!-- Shadow filter -->
+    <filter id="dropShadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    
+    <!-- Glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
   
-  <!-- Mercury-inspired logo: Three interlaced crescents forming the Mercury symbol -->
-  <!-- The design subtly creates the Mercury planetary symbol (☿) through geometric harmony -->
+  <!-- Dark background with rounded corners -->
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" 
+        fill="#1a1a1a" stroke="#333" stroke-width="1"/>
   
-  <!-- Top crescent - represents the "horns" of Mercury -->
-  <path d="M 64 20 A 22 22 0 0 1 42 42 A 18 18 0 0 0 64 38 A 18 18 0 0 0 86 42 A 22 22 0 0 1 64 20 Z" 
-        fill="url(#grad1)" opacity="0.9" stroke="#1565c0" stroke-width="1.5"/>
+  <!-- Subtle grid pattern for web/digital feel -->
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 L 0 0 0 8" fill="none" stroke="#2a2a2a" stroke-width="0.5" opacity="0.3"/>
+    </pattern>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" fill="url(#grid)" opacity="0.1"/>
   
-  <!-- Central circle - the core of Mercury -->
-  <circle cx="64" cy="58" r="20" fill="none" stroke="url(#grad1)" stroke-width="3" opacity="0.8"/>
+  <!-- Main download arrow - centered and prominent -->
+  <g transform="translate(64, 64)" filter="url(#dropShadow)">
+    <!-- Arrow shaft -->
+    <rect x="-6" y="-28" width="12" height="36" fill="url(#arrowGradient)" rx="6"/>
+    
+    <!-- Arrow head - pointing down -->
+    <path d="M -20 8 L 0 32 L 20 8 Z" fill="url(#arrowGradient)" />
+    
+    <!-- Inner highlight for depth -->
+    <rect x="-4" y="-26" width="8" height="32" fill="#ffffff" opacity="0.2" rx="4"/>
+    <path d="M -16 10 L 0 26 L 16 10 Z" fill="#ffffff" opacity="0.2" />
+  </g>
   
-  <!-- Left crescent - interlaces with center -->
-  <path d="M 35 58 A 20 20 0 0 1 55 38 A 16 16 0 0 0 39 54 A 16 16 0 0 0 55 70 A 20 20 0 0 1 35 58 Z" 
-        fill="url(#grad1)" opacity="0.7" stroke="#1565c0" stroke-width="1.5"/>
+  <!-- Subtle warning indicator - small triangle in corner -->
+  <g transform="translate(102, 26)">
+    <path d="M 0 -8 L -7 6 L 7 6 Z" fill="url(#warningGradient)" opacity="0.7"/>
+    <circle cx="0" cy="2" r="1.5" fill="#1a1a1a"/>
+    <rect x="-0.5" y="-4" width="1" height="4" fill="#1a1a1a" rx="0.5"/>
+  </g>
   
-  <!-- Right crescent - completes the triad -->
-  <path d="M 93 58 A 20 20 0 0 0 73 38 A 16 16 0 0 1 89 54 A 16 16 0 0 1 73 70 A 20 20 0 0 0 93 58 Z" 
-        fill="url(#grad1)" opacity="0.7" stroke="#1565c0" stroke-width="1.5"/>
+  <!-- Video/media context indicators - subtle corner elements -->
+  <g opacity="0.4">
+    <!-- Play button suggestion in top-left -->
+    <circle cx="26" cy="26" r="8" fill="none" stroke="#87CEEB" stroke-width="1.5" opacity="0.5"/>
+    <path d="M 23 23 L 23 29 L 29 26 Z" fill="#87CEEB" opacity="0.5"/>
+    
+    <!-- Download completion indicator in bottom-right -->
+    <circle cx="102" cy="102" r="8" fill="none" stroke="#FFB347" stroke-width="1.5" opacity="0.5"/>
+    <path d="M 98 102 L 101 105 L 106 100" fill="none" stroke="#FFB347" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  </g>
   
-  <!-- Bottom vertical element - completes Mercury symbol subtly -->
-  <rect x="62" y="78" width="4" height="16" fill="url(#grad1)" opacity="0.6" rx="2"/>
-  
-  <!-- Cross element at bottom - Mercury's cross -->
-  <rect x="56" y="92" width="16" height="3" fill="url(#grad1)" opacity="0.6" rx="1.5"/>
-  
-  <!-- Subtle geometric lines that enhance the Mercury symbolism -->
-  <line x1="44" y1="44" x2="84" y2="72" stroke="url(#grad1)" stroke-width="1" opacity="0.3"/>
-  <line x1="84" y1="44" x2="44" y2="72" stroke="url(#grad1)" stroke-width="1" opacity="0.3"/>
-  
+  <!-- Subtle pulse rings around main arrow for attention -->
+  <g transform="translate(64, 64)" opacity="0.1">
+    <circle r="45" fill="none" stroke="#87CEEB" stroke-width="1"/>
+    <circle r="50" fill="none" stroke="#FFB347" stroke-width="0.5"/>
+  </g>
 </svg>
