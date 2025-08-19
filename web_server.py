@@ -2998,29 +2998,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 </div>
             </div>
             
-            <!-- URL Input Modal -->
-            <div class="modal-overlay" id="urlInputModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <div class="modal-title">🔄 Retry Download</div>
-                        <div class="modal-subtitle">Enter the original video URL to retry this download. The download will attempt to resume from where it left off.</div>
-                    </div>
-                    <div class="modal-body">
-                        <div class="url-input-group">
-                            <label class="url-input-label">File to retry:</label>
-                            <div class="filename-display" id="modalFilename">filename.mp4.part</div>
-                        </div>
-                        <div class="url-input-group">
-                            <label class="url-input-label" for="urlInput">Original video URL:</label>
-                            <textarea class="url-input" id="urlInput" placeholder="https://example.com/video-url" rows="3"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-actions">
-                        <button class="modal-btn secondary" onclick="closeUrlModal()">Cancel</button>
-                        <button class="modal-btn primary" onclick="submitUrlRetry()">🔄 Start Retry</button>
-                    </div>
-                </div>
-            </div>
             
             <script>
                 let currentFolder = '';
@@ -3050,31 +3027,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     updateDownloads();
                     setInterval(updateDownloads, 2000); // Update every 2 seconds
                     
-                    // Modal event listeners
-                    const modal = document.getElementById('urlInputModal');
-                    const urlInput = document.getElementById('urlInput');
-                    
-                    // Close modal when clicking outside
-                    modal.addEventListener('click', function(e) {{
-                        if (e.target === modal) {{
-                            closeUrlModal();
-                        }}
-                    }});
-                    
-                    // Close modal when pressing Escape
-                    document.addEventListener('keydown', function(e) {{
-                        if (e.key === 'Escape' && modal.classList.contains('active')) {{
-                            closeUrlModal();
-                        }}
-                    }});
-                    
-                    // Submit when pressing Ctrl+Enter or Cmd+Enter in textarea
-                    urlInput.addEventListener('keydown', function(e) {{
-                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {{
-                            e.preventDefault();
-                            submitUrlRetry();
-                        }}
-                    }});
                 }});
                 
                 async function loadCurrentFolder() {{
@@ -3517,20 +3469,136 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             return;
                         }}
                     }} catch (error) {{
-                        console.log('No matching failed download found, will prompt for URL:', error);
+                        console.log('No matching failed download found, searching browser history:', error);
                     }}
                     
-                    // No matching failed download found, show modal for manual URL input
-                    document.getElementById('modalFilename').textContent = filename;
-                    document.getElementById('urlInput').value = '';
+                    // No stored URL found, search browser history for matching URL
+                    await searchBrowserHistoryForUrl(filename);
+                }}
+                
+                async function searchBrowserHistoryForUrl(filename) {{
+                    try {{
+                        // Clean filename for comparison (remove extensions but preserve more structure)
+                        const baseFilename = filename
+                            .replace(/\\.part$/, '')
+                            .replace(/\\.ytdl$/, '')
+                            .replace(/\\.temp$/, '')
+                            .replace(/\\.[^.]+$/, ''); // Remove file extension
+                        
+                        console.log('Searching browser history for:', baseFilename);
+                        
+                        // Search browser history (requires history permission)
+                        if (chrome && chrome.history) {{
+                            const historyItems = await new Promise((resolve) => {{
+                                chrome.history.search({{
+                                    text: '',
+                                    maxResults: 2000,
+                                    startTime: Date.now() - (30 * 24 * 60 * 60 * 1000) // Last 30 days (increased from 7)
+                                }}, resolve);
+                            }});
+                            
+                            console.log(`Searching through ${{historyItems.length}} history items`);
+                            
+                            // Find the best matching URL using multiple strategies
+                            let bestMatch = null;
+                            let bestScore = 0;
+                            let matchStrategy = '';
+                            
+                            for (const item of historyItems) {{
+                                if (!item.title || !item.url) continue;
+                                
+                                let score = 0;
+                                let strategy = '';
+                                
+                                // Strategy 1: Exact substring match (case-insensitive)
+                                if (item.title.toLowerCase().includes(baseFilename.toLowerCase())) {{
+                                    score = 1.0; // Highest score for exact match
+                                    strategy = 'exact_substring';
+                                }} else if (baseFilename.toLowerCase().includes(item.title.toLowerCase()) && item.title.length > 10) {{
+                                    score = 0.95; // Very high score if title is contained in filename
+                                    strategy = 'title_in_filename';
+                                }} else {{
+                                    // Strategy 2: Word-based similarity with less aggressive cleaning
+                                    const cleanFilename = baseFilename
+                                        .toLowerCase()
+                                        .replace(/[-_]/g, ' ') // Convert dashes/underscores to spaces
+                                        .replace(/[()]/g, ' ') // Convert parentheses to spaces but keep content
+                                        .replace(/\\s+/g, ' ') // Collapse multiple spaces
+                                        .trim();
+                                    
+                                    const cleanTitle = item.title
+                                        .toLowerCase()
+                                        .replace(/[-_]/g, ' ')
+                                        .replace(/[()]/g, ' ')
+                                        .replace(/\\s+/g, ' ')
+                                        .trim();
+                                    
+                                    score = calculateSimilarity(cleanFilename, cleanTitle);
+                                    strategy = 'word_similarity';
+                                    
+                                    // Strategy 3: Check for key identifiers (numbers, unique terms)
+                                    const filenameNumbers = baseFilename.match(/\\d{{2,}}/g) || [];
+                                    const titleNumbers = item.title.match(/\\d{{2,}}/g) || [];
+                                    if (filenameNumbers.length > 0 && titleNumbers.length > 0) {{
+                                        const numberMatches = filenameNumbers.filter(num => titleNumbers.includes(num)).length;
+                                        if (numberMatches > 0) {{
+                                            score += 0.3; // Boost score for matching numbers
+                                            strategy += '+numbers';
+                                        }}
+                                    }}
+                                }}
+                                
+                                if (score > bestScore && score > 0.2) {{ // Lower threshold for better matching
+                                    bestMatch = item;
+                                    bestScore = score;
+                                    matchStrategy = strategy;
+                                    console.log(`New best match (${{strategy}}, score: ${{score.toFixed(2)}}):`, item.title, item.url);
+                                }}
+                            }}
+                            
+                            if (bestMatch) {{
+                                console.log(`Found matching URL using ${{matchStrategy}} (score: ${{bestScore.toFixed(2)}}):`, bestMatch);
+                                
+                                // Create a failed_download object for the retry
+                                const failed_download = {{
+                                    url: bestMatch.url,
+                                    title: bestMatch.title,
+                                    open_folder: true
+                                }};
+                                
+                                await startRetryWithStoredUrl(filename, failed_download);
+                                return;
+                            }}
+                        }}
+                        
+                        // No match found in browser history
+                        console.log('No matching URL found in browser history');
+                        alert(`Could not find a matching URL for "${{filename}}". The file may have been downloaded from a URL that is no longer in your browser history (searched last 30 days).`);
+                        
+                    }} catch (error) {{
+                        console.error('Error searching browser history:', error);
+                        alert(`Could not search browser history for "${{filename}}". Make sure the VidSnatch extension has history permission.`);
+                    }}
+                }}
+                
+                function calculateSimilarity(str1, str2) {{
+                    // Simple word-based similarity calculation
+                    const words1 = str1.split(' ').filter(w => w.length > 2);
+                    const words2 = str2.split(' ').filter(w => w.length > 2);
                     
-                    // Show modal
-                    document.getElementById('urlInputModal').classList.add('active');
+                    if (words1.length === 0 || words2.length === 0) return 0;
                     
-                    // Focus on URL input after animation
-                    setTimeout(() => {{
-                        document.getElementById('urlInput').focus();
-                    }}, 100);
+                    let matches = 0;
+                    for (const word1 of words1) {{
+                        for (const word2 of words2) {{
+                            if (word1 === word2 || word1.includes(word2) || word2.includes(word1)) {{
+                                matches++;
+                                break;
+                            }}
+                        }}
+                    }}
+                    
+                    return matches / Math.max(words1.length, words2.length);
                 }}
                 
                 async function startRetryWithStoredUrl(filename, failed_download) {{
@@ -3573,10 +3641,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     }}
                 }}
                 
-                function closeUrlModal() {{
-                    document.getElementById('urlInputModal').classList.remove('active');
-                    currentRetryFilename = null;
-                }}
                 
                 function showFileLoadingState(filename) {{
                     // Find the file row and replace retry/delete buttons with loading spinner

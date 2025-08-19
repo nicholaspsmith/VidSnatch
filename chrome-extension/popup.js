@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const serverStatus = document.getElementById('serverStatus');
   const serverStatusText = document.getElementById('serverStatusText');
   const stopServerBtn = document.getElementById('stopServerBtn');
+  const webInterfaceBtn = document.getElementById('webInterfaceBtn');
   
   let currentVideoInfo = null;
   let activeDownloads = new Map(); // downloadId -> download object
@@ -805,6 +806,31 @@ document.addEventListener('DOMContentLoaded', async function() {
   
   // Server control button handler
   stopServerBtn.addEventListener('click', stopServer);
+  
+  // Web interface button click handler
+  webInterfaceBtn.addEventListener('click', async function() {
+    try {
+      const webInterfaceUrl = 'http://localhost:8080';
+      
+      // Check if a tab with the web interface is already open
+      const tabs = await chrome.tabs.query({ url: `${webInterfaceUrl}/*` });
+      
+      if (tabs.length > 0) {
+        // Switch to existing web interface tab
+        const existingTab = tabs[0];
+        await chrome.tabs.update(existingTab.id, { active: true });
+        await chrome.windows.update(existingTab.windowId, { focused: true });
+        showStatus('Switched to existing web interface tab', 'success');
+      } else {
+        // Open new tab to web interface
+        await chrome.tabs.create({ url: webInterfaceUrl });
+        showStatus('Opened web interface in new tab', 'success');
+      }
+    } catch (error) {
+      console.error('Error opening web interface:', error);
+      showStatus('❌ Error opening web interface', 'error');
+    }
+  });
   
   // Initialize
   await getCurrentTabInfo();

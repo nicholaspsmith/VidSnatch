@@ -26,7 +26,7 @@ from pathlib import Path
 class VidSnatchInstaller:
     def __init__(self, root):
         self.root = root
-        self.root.title("VidSnatch Installer")
+        self.root.title("VidSnatch Manager")
         self.root.geometry("700x700")
         self.root.resizable(False, False)
         
@@ -58,7 +58,7 @@ class VidSnatchInstaller:
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Title
-        title_label = ttk.Label(main_frame, text="🎬 VidSnatch Installer", 
+        title_label = ttk.Label(main_frame, text="🎬 VidSnatch Manager", 
                                font=("Helvetica", 24, "bold"))
         title_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
         
@@ -70,7 +70,8 @@ class VidSnatchInstaller:
         desc_frame.columnconfigure(0, weight=1)
         
         desc_text = ("VidSnatch is a powerful video downloader that works with YouTube and many other sites.\n\n"
-                    "It includes a menu bar app and Chrome extension for easy video downloading.")
+                    "It includes a menu bar app and Chrome extension for easy video downloading.\n"
+                    "Use the buttons below to install, uninstall, or reinstall VidSnatch.")
         desc_label = ttk.Label(desc_frame, text=desc_text, justify=tk.LEFT, wraplength=480)
         desc_label.grid(row=0, column=0, sticky='w')
         
@@ -597,13 +598,32 @@ python3 menubar_app.py
         
         commands = [
             "killall -9 VidSnatch 2>/dev/null || true",
+            "pkill -9 -f 'menubar_app.py' 2>/dev/null || true",
             "pkill -9 -f 'web_server.py' 2>/dev/null || true",
             "pkill -9 -f 'VidSnatch' 2>/dev/null || true",
+            "pkill -9 -f 'pystray' 2>/dev/null || true",
             "pkill -9 -f 'launch-menubar.py' 2>/dev/null || true"
         ]
         
         for cmd in commands:
-            subprocess.run(cmd, shell=True, capture_output=True)
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if "Stopped" in cmd or "pkill" in cmd:
+                # Log successful process termination
+                if result.returncode == 0:
+                    self.log_output(f"✅ {cmd.split("'")[1] if "'" in cmd else 'Process'} terminated")
+            
+        # Kill any Python processes running from VidSnatch directory
+        try:
+            result = subprocess.run("ps aux | grep python | grep '/Applications/VidSnatch' | grep -v grep | awk '{print $2}'", 
+                                  shell=True, capture_output=True, text=True)
+            if result.stdout.strip():
+                pids = result.stdout.strip().split('\n')
+                for pid in pids:
+                    if pid:  # Make sure pid is not empty
+                        subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                self.log_output("✅ Stopped VidSnatch Python processes")
+        except:
+            pass
             
         # Kill anything using port 8080
         try:
@@ -635,6 +655,13 @@ python3 menubar_app.py
             if os.path.exists(shortcut):
                 os.remove(shortcut)
                 self.log_output(f"✅ Removed old desktop shortcut: {os.path.basename(shortcut)}")
+        
+        # Clear menu bar cache by refreshing dock
+        try:
+            subprocess.run("killall -KILL Dock 2>/dev/null", shell=True, capture_output=True)
+            self.log_output("✅ Refreshed menu bar and dock")
+        except:
+            pass
             
         return True
         
@@ -848,13 +875,28 @@ python3 menubar_app.py
         
         commands = [
             "killall -9 VidSnatch 2>/dev/null || true",
+            "pkill -9 -f 'menubar_app.py' 2>/dev/null || true",
             "pkill -9 -f 'web_server.py' 2>/dev/null || true",
             "pkill -9 -f 'VidSnatch' 2>/dev/null || true",
+            "pkill -9 -f 'pystray' 2>/dev/null || true",
             "pkill -9 -f 'launch-menubar.py' 2>/dev/null || true"
         ]
         
         for cmd in commands:
             subprocess.run(cmd, shell=True, capture_output=True)
+            
+        # Kill any Python processes running from VidSnatch directory
+        try:
+            result = subprocess.run("ps aux | grep python | grep '/Applications/VidSnatch' | grep -v grep | awk '{print $2}'", 
+                                  shell=True, capture_output=True, text=True)
+            if result.stdout.strip():
+                pids = result.stdout.strip().split('\n')
+                for pid in pids:
+                    if pid:  # Make sure pid is not empty
+                        subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                print("✅ Stopped VidSnatch Python processes")
+        except:
+            pass
             
         # Kill anything using port 8080
         try:
@@ -886,6 +928,13 @@ python3 menubar_app.py
             if os.path.exists(shortcut):
                 os.remove(shortcut)
                 print(f"✅ Removed old desktop shortcut: {os.path.basename(shortcut)}")
+        
+        # Clear menu bar cache by refreshing dock
+        try:
+            subprocess.run("killall -KILL Dock 2>/dev/null", shell=True, capture_output=True)
+            print("✅ Refreshed menu bar and dock")
+        except:
+            pass
             
         return True
 
@@ -897,7 +946,7 @@ class CommandLineInstaller:
         self.current_dir = os.path.dirname(os.path.abspath(__file__))
         
     def run(self):
-        print("\n🎬 VidSnatch Command Line Installer")
+        print("\n🎬 VidSnatch Manager (Command Line)")
         print("=" * 40)
         
         # Check installation status

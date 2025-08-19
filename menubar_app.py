@@ -26,17 +26,44 @@ class VidSnatchMenuBar:
         self.install_dir = os.path.expanduser("~/Applications/VidSnatch")
         
     def create_icon(self):
-        """Create a simple icon for the menu bar"""
-        # Create a simple icon - a circle with 'V' 
-        width = height = 64
+        """Create an icon for the menu bar using the extension icon"""
+        try:
+            # Try to load the extension icon
+            icon_path = os.path.join(self.install_dir, "chrome-extension", "icons", "icon128.png")
+            if os.path.exists(icon_path):
+                image = Image.open(icon_path)
+                # Resize to menu bar size (typically 16-22px on macOS)
+                image = image.resize((22, 22), Image.Resampling.LANCZOS)
+                return image
+        except Exception as e:
+            print(f"Could not load extension icon: {e}")
+        
+        # Fallback: Create a download arrow icon similar to the extension
+        width = height = 22
         image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
         
-        # Draw circle background
-        draw.ellipse([8, 8, width-8, height-8], fill=(74, 144, 226, 255))
+        # Draw dark background circle
+        draw.ellipse([1, 1, width-1, height-1], fill=(26, 26, 26, 255))
         
-        # Draw 'V' letter
-        draw.text((width//2-8, height//2-8), 'V', fill=(255, 255, 255, 255))
+        # Draw download arrow (simplified version of the extension icon)
+        center_x, center_y = width//2, height//2
+        
+        # Arrow shaft
+        shaft_width = 3
+        shaft_height = 8
+        draw.rectangle([
+            center_x - shaft_width//2, center_y - shaft_height//2,
+            center_x + shaft_width//2, center_y + shaft_height//2 - 2
+        ], fill=(135, 206, 235, 255))  # Sky blue like the extension
+        
+        # Arrow head
+        arrow_points = [
+            (center_x - 4, center_y + 2),
+            (center_x, center_y + 6),
+            (center_x + 4, center_y + 2)
+        ]
+        draw.polygon(arrow_points, fill=(135, 206, 235, 255))
         
         return image
     

@@ -1,13 +1,13 @@
 #!/bin/bash
-# VidSnatch GUI Installer Launcher
-# This script launches the graphical installer for VidSnatch
+# VidSnatch Manager Launcher
+# This script launches the graphical manager for installing, uninstalling, or reinstalling VidSnatch
 
 cd "$(dirname "$0")"
 
-# Check if GUI installer exists
+# Check if GUI manager exists
 if [[ ! -f "gui_installer.py" ]]; then
-    echo "❌ GUI installer not found!"
-    echo "Please run ./build-installer.sh first to create the installer package."
+    echo "❌ VidSnatch Manager not found!"
+    echo "Please run ./build-installer.sh first to create the manager package."
     exit 1
 fi
 
@@ -32,15 +32,15 @@ if [[ $? -ne 0 ]]; then
         echo "❌ Homebrew not found. Please install tkinter manually:"
         echo "   brew install python-tk"
         echo ""
-        echo "Falling back to command line installer..."
+        echo "Falling back to command line manager..."
         python3 gui_installer.py
         exit $?
     fi
 fi
 
-# Launch the GUI installer
-echo "🎬 Launching VidSnatch Installer..."
+# Launch the GUI installer/uninstaller
+echo "🎬 Launching VidSnatch Manager..."
 python3 gui_installer.py
 
-echo "Installation complete. Press any key to close..."
+echo "VidSnatch Manager session complete. Press any key to close..."
 read -n 1

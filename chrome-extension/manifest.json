@@ -6,7 +6,9 @@
   "permissions": [
     "activeTab",
     "storage",
-    "notifications"
+    "notifications",
+    "history",
+    "tabs"
   ],
   "host_permissions": [
     "http://localhost:8080/*",
