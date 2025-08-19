@@ -27,7 +27,7 @@ class VidSnatchInstaller:
     def __init__(self, root):
         self.root = root
         self.root.title("VidSnatch Installer")
-        self.root.geometry("600x550")
+        self.root.geometry("600x540")
         self.root.resizable(False, False)
         
         # Center the window on screen
@@ -125,9 +125,15 @@ class VidSnatchInstaller:
                                           style='Large.TButton')
         self.reinstall_button.grid(row=0, column=2, padx=5, sticky='ew')
         
-        # Progress bar
-        self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        # Progress bar - create centered frame to match other container widths
+        progress_outer_frame = ttk.Frame(main_frame)
+        progress_outer_frame.grid(row=4, column=0, columnspan=2, pady=(0, 10))
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        progress_outer_frame.columnconfigure(0, weight=1)
+        
+        self.progress = ttk.Progressbar(progress_outer_frame, mode='indeterminate', length=480)
+        self.progress.grid(row=0, column=0)
         
         # Output text area
         output_frame = ttk.LabelFrame(main_frame, text="Installation Output", padding="5")
@@ -164,7 +170,7 @@ class VidSnatchInstaller:
         extension_button.grid(row=1, column=0, pady=(0, 5))
         
         # Close button - center between Chrome extension and bottom with proper spacing
-        close_button = ttk.Button(main_frame, text="Close", command=self.root.quit, width=15)
+        close_button = ttk.Button(main_frame, text="❌ Close", command=self.root.quit, width=15)
         close_button.grid(row=7, column=0, columnspan=2, pady=(20, 30))
         
         # Configure grid weights - distribute space better
