@@ -443,17 +443,24 @@ class VidSnatchInstaller:
         self.log_output("📁 Creating installation directory...")
         os.makedirs(self.install_dir, exist_ok=True)
         
-        # Copy Python server files
-        server_src = os.path.join(self.current_dir, "server")
-        if os.path.exists(server_src):
-            self.log_output("🐍 Installing Python server...")
-            for item in os.listdir(server_src):
-                src_path = os.path.join(server_src, item)
-                dst_path = os.path.join(self.install_dir, item)
-                if os.path.isdir(src_path):
-                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(src_path, dst_path)
+        # Copy Python server files from current directory
+        self.log_output("🐍 Installing Python server...")
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py']
+        for file in server_files:
+            src_path = os.path.join(self.current_dir, file)
+            if os.path.exists(src_path):
+                dst_path = os.path.join(self.install_dir, file)
+                shutil.copy2(src_path, dst_path)
+                self.log_output(f"  ✅ Copied {file}")
+        
+        # Copy modules directory
+        modules_src = os.path.join(self.current_dir, "modules")
+        modules_dst = os.path.join(self.install_dir, "modules")
+        if os.path.exists(modules_src):
+            if os.path.exists(modules_dst):
+                shutil.rmtree(modules_dst)
+            shutil.copytree(modules_src, modules_dst)
+            self.log_output("  ✅ Copied modules directory")
         
         # Set up Python virtual environment
         self.log_output("⚙️ Setting up Python environment...")
@@ -479,39 +486,81 @@ class VidSnatchInstaller:
             if not self.run_command(f"'{pip_path}' install {dep}", f"Installing {dep} for menu bar app"):
                 return False
         
-        # Install menu bar app
-        self.log_output("📱 Installing menu bar app...")
-        # Try multiple possible locations for the app bundle
-        possible_app_paths = [
-            os.path.join(self.current_dir, "VidSnatch.app"),
-            os.path.join(self.current_dir, "macos-app", "VidSnatch.app"),
-            os.path.join(self.current_dir, "macos-installer", "VidSnatch.app")
-        ]
+        # Create menu bar app launcher (script-based approach)
+        self.log_output("📱 Creating menu bar app launcher...")
+        app_dir = os.path.expanduser("~/Applications/VidSnatch.app")
+        contents_dir = os.path.join(app_dir, "Contents")
+        macos_dir = os.path.join(contents_dir, "MacOS")
         
-        app_src = None
-        for path in possible_app_paths:
-            if os.path.exists(path):
-                app_src = path
-                self.log_output(f"✅ Found VidSnatch.app at: {path}")
-                break
-                
-        if not app_src:
-            self.log_output("❌ Could not find VidSnatch.app in any expected location:")
-            for path in possible_app_paths:
-                self.log_output(f"   - Checked: {path}")
-            return False
-            
-        app_dst = os.path.expanduser("~/Applications/VidSnatch.app")
+        # Create app bundle structure
+        os.makedirs(macos_dir, exist_ok=True)
         
-        if os.path.exists(app_src):
-            if os.path.exists(app_dst):
-                shutil.rmtree(app_dst)
-            shutil.copytree(app_src, app_dst)
-            
-            # Make executable
-            executable_path = os.path.join(app_dst, "Contents", "MacOS", "VidSnatch")
-            if os.path.exists(executable_path):
-                os.chmod(executable_path, 0o755)
+        # Create Info.plist
+        info_plist_content = '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>VidSnatch</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.vidsnatch.menubar</string>
+    <key>CFBundleName</key>
+    <string>VidSnatch</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>'''
+        
+        with open(os.path.join(contents_dir, "Info.plist"), 'w') as f:
+            f.write(info_plist_content)
+        
+        # Create launcher script
+        launcher_script = os.path.join(macos_dir, "VidSnatch")
+        launcher_content = f'''#!/bin/bash
+cd "{self.install_dir}"
+source venv/bin/activate
+python3 -c "
+import threading
+import time
+import subprocess
+import os
+import sys
+
+def start_server():
+    os.chdir('{self.install_dir}')
+    subprocess.run([sys.executable, 'web_server.py'])
+
+# Start server in background
+server_thread = threading.Thread(target=start_server, daemon=True)
+server_thread.start()
+
+print('VidSnatch server started in background')
+print('Access at http://localhost:8080')
+print('Press Ctrl+C to stop')
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print('Stopping VidSnatch server...')
+"'''
+        
+        with open(launcher_script, 'w') as f:
+            f.write(launcher_content)
+        
+        # Make executable
+        os.chmod(launcher_script, 0o755)
+        self.log_output("✅ Menu bar app launcher created")
         
         # Install Chrome extension files
         self.log_output("🌐 Installing Chrome extension...")
@@ -677,17 +726,24 @@ except Exception as e:
         print("📁 Creating installation directory...")
         os.makedirs(self.install_dir, exist_ok=True)
         
-        # Copy Python server files
-        server_src = os.path.join(self.current_dir, "server")
-        if os.path.exists(server_src):
-            print("🐍 Installing Python server...")
-            for item in os.listdir(server_src):
-                src_path = os.path.join(server_src, item)
-                dst_path = os.path.join(self.install_dir, item)
-                if os.path.isdir(src_path):
-                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(src_path, dst_path)
+        # Copy Python server files from current directory
+        print("🐍 Installing Python server...")
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py']
+        for file in server_files:
+            src_path = os.path.join(self.current_dir, file)
+            if os.path.exists(src_path):
+                dst_path = os.path.join(self.install_dir, file)
+                shutil.copy2(src_path, dst_path)
+                print(f"  ✅ Copied {file}")
+        
+        # Copy modules directory
+        modules_src = os.path.join(self.current_dir, "modules")
+        modules_dst = os.path.join(self.install_dir, "modules")
+        if os.path.exists(modules_src):
+            if os.path.exists(modules_dst):
+                shutil.rmtree(modules_dst)
+            shutil.copytree(modules_src, modules_dst)
+            print("  ✅ Copied modules directory")
         
         # Set up Python virtual environment
         print("⚙️ Setting up Python environment...")
@@ -726,39 +782,81 @@ except Exception as e:
                 print(f"❌ Error installing {dep}: {result.stderr}")
                 return False
         
-        # Install menu bar app
-        print("📱 Installing menu bar app...")
-        # Try multiple possible locations for the app bundle
-        possible_app_paths = [
-            os.path.join(self.current_dir, "VidSnatch.app"),
-            os.path.join(self.current_dir, "macos-app", "VidSnatch.app"),
-            os.path.join(self.current_dir, "macos-installer", "VidSnatch.app")
-        ]
+        # Create menu bar app launcher (script-based approach)
+        print("📱 Creating menu bar app launcher...")
+        app_dir = os.path.expanduser("~/Applications/VidSnatch.app")
+        contents_dir = os.path.join(app_dir, "Contents")
+        macos_dir = os.path.join(contents_dir, "MacOS")
         
-        app_src = None
-        for path in possible_app_paths:
-            if os.path.exists(path):
-                app_src = path
-                print(f"✅ Found VidSnatch.app at: {path}")
-                break
-                
-        if not app_src:
-            print("❌ Could not find VidSnatch.app in any expected location:")
-            for path in possible_app_paths:
-                print(f"   - Checked: {path}")
-            return False
-            
-        app_dst = os.path.expanduser("~/Applications/VidSnatch.app")
+        # Create app bundle structure
+        os.makedirs(macos_dir, exist_ok=True)
         
-        if os.path.exists(app_src):
-            if os.path.exists(app_dst):
-                shutil.rmtree(app_dst)
-            shutil.copytree(app_src, app_dst)
-            
-            # Make executable
-            executable_path = os.path.join(app_dst, "Contents", "MacOS", "VidSnatch")
-            if os.path.exists(executable_path):
-                os.chmod(executable_path, 0o755)
+        # Create Info.plist
+        info_plist_content = '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>VidSnatch</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.vidsnatch.menubar</string>
+    <key>CFBundleName</key>
+    <string>VidSnatch</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>'''
+        
+        with open(os.path.join(contents_dir, "Info.plist"), 'w') as f:
+            f.write(info_plist_content)
+        
+        # Create launcher script
+        launcher_script = os.path.join(macos_dir, "VidSnatch")
+        launcher_content = f'''#!/bin/bash
+cd "{self.install_dir}"
+source venv/bin/activate
+python3 -c "
+import threading
+import time
+import subprocess
+import os
+import sys
+
+def start_server():
+    os.chdir('{self.install_dir}')
+    subprocess.run([sys.executable, 'web_server.py'])
+
+# Start server in background
+server_thread = threading.Thread(target=start_server, daemon=True)
+server_thread.start()
+
+print('VidSnatch server started in background')
+print('Access at http://localhost:8080')
+print('Press Ctrl+C to stop')
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print('Stopping VidSnatch server...')
+"'''
+        
+        with open(launcher_script, 'w') as f:
+            f.write(launcher_content)
+        
+        # Make executable
+        os.chmod(launcher_script, 0o755)
+        print("✅ Menu bar app launcher created")
         
         # Install Chrome extension files
         print("🌐 Installing Chrome extension...")
