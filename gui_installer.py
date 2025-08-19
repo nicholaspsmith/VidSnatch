@@ -566,17 +566,7 @@ class VidSnatchInstaller:
         
     def run_uninstall_steps(self):
         """Run the actual uninstallation steps"""
-        # First save any active downloads as failed so they can be retried
-        self.log_output("💾 Saving active downloads for retry after reinstall...")
-        save_script = os.path.join(self.current_dir, "save_active_as_failed.py")
-        if os.path.exists(save_script):
-            result = subprocess.run(f"python3 '{save_script}'", shell=True, capture_output=True, text=True)
-            if result.stdout:
-                for line in result.stdout.strip().split('\n'):
-                    if line:
-                        self.log_output(line)
-        
-        # Stop all VidSnatch processes
+        # Stop all VidSnatch processes (URL tracker automatically persists incomplete downloads)
         self.log_output("🛑 Stopping all VidSnatch processes...")
         
         commands = [
@@ -801,14 +791,7 @@ except Exception as e:
         
     def run_uninstall_steps_cli(self):
         """CLI version of uninstallation steps with print output"""
-        # First save any active downloads as failed so they can be retried
-        print("💾 Saving active downloads for retry after reinstall...")
-        save_script = os.path.join(self.current_dir, "save_active_as_failed.py")
-        if os.path.exists(save_script):
-            result = subprocess.run(f"python3 '{save_script}'", shell=True, capture_output=True, text=True)
-            if result.stdout:
-                print(result.stdout)
-        
+        # Stop all VidSnatch processes (URL tracker automatically persists incomplete downloads)
         print("🛑 Stopping all VidSnatch processes...")
         
         commands = [
