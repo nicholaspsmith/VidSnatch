@@ -151,9 +151,9 @@ class VidSnatchInstaller:
                                      command=self.setup_chrome_extension, style='Large.TButton')
         extension_button.grid(row=1, column=0, pady=(0, 5))
         
-        # Close button - center between Chrome extension and bottom
+        # Close button - center between Chrome extension and bottom with proper spacing
         close_button = ttk.Button(main_frame, text="Close", command=self.root.quit, width=15)
-        close_button.grid(row=7, column=0, columnspan=2, pady=(15, 15))
+        close_button.grid(row=7, column=0, columnspan=2, pady=(15, 25))
         
         # Configure grid weights - distribute space better
         self.root.columnconfigure(0, weight=1)
