@@ -2906,6 +2906,94 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     font-weight: 600;
                 }}
                 
+                /* Suggested Downloads Styles */
+                .suggested-downloads {{
+                    max-height: 300px;
+                    overflow-y: auto;
+                }}
+                
+                .suggestion-item {{
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 12px;
+                    background: var(--input-bg);
+                    border: 1px solid var(--input-border);
+                    border-radius: 6px;
+                    margin-bottom: 8px;
+                    transition: all 0.2s ease;
+                }}
+                
+                .suggestion-item:hover {{
+                    border-color: var(--btn-bg);
+                    background: var(--table-hover-bg);
+                }}
+                
+                .suggestion-info {{
+                    flex: 1;
+                    min-width: 0;
+                }}
+                
+                .suggestion-title {{
+                    font-weight: 600;
+                    color: var(--text-color);
+                    margin-bottom: 4px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }}
+                
+                .suggestion-url {{
+                    font-size: 0.8rem;
+                    color: var(--text-color);
+                    opacity: 0.7;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }}
+                
+                .suggestion-meta {{
+                    font-size: 0.75rem;
+                    color: var(--text-color);
+                    opacity: 0.6;
+                    margin-top: 2px;
+                }}
+                
+                .suggestion-actions {{
+                    display: flex;
+                    gap: 6px;
+                }}
+                
+                .suggestion-btn {{
+                    padding: 6px 12px;
+                    font-size: 0.8rem;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-weight: 500;
+                }}
+                
+                .suggestion-btn.download {{
+                    background: var(--btn-bg);
+                    color: white;
+                }}
+                
+                .suggestion-btn.download:hover {{
+                    background: var(--btn-hover-bg);
+                    transform: translateY(-1px);
+                }}
+                
+                .suggestion-btn.delete {{
+                    background: var(--btn-danger-bg);
+                    color: white;
+                }}
+                
+                .suggestion-btn.delete:hover {{
+                    background: var(--btn-danger-hover-bg);
+                    transform: translateY(-1px);
+                }}
+                
                 @media (max-width: 768px) {{
                     .main-content {{
                         grid-template-columns: 1fr;
@@ -3001,6 +3089,34 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         <div class="downloads-list" id="downloadsList"></div>
                     </div>
                     
+                    <!-- Suggested Downloads Card -->
+                    <div class="card" style="grid-column: 1 / -1;">
+                        <h3>💡 Suggested Downloads</h3>
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                            <button class="btn" id="scanHistoryBtn" onclick="scanBrowserHistory()">
+                                🔍 Scan History
+                            </button>
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem;">
+                                # of Days:
+                                <select id="historyDaysSelect" style="padding: 4px 8px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-color); border-radius: 4px;">
+                                    <option value="1">1</option>
+                                    <option value="3">3</option>
+                                    <option value="7" selected>7</option>
+                                    <option value="14">14</option>
+                                    <option value="30">30</option>
+                                    <option value="60">60</option>
+                                    <option value="90">90</option>
+                                </select>
+                            </label>
+                            <span id="scanStatus" style="font-size: 0.9rem; color: var(--text-color); opacity: 0.7;"></span>
+                        </div>
+                        <div class="suggested-downloads" id="suggestedDownloads">
+                            <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-color); opacity: 0.7;">
+                                Click "Scan History" to find frequently visited videos that you might want to download.
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- File Explorer Card -->
                     <div class="card" style="grid-column: 1 / -1;">
                         <h3>🗂️ Downloaded Files</h3>
@@ -3040,6 +3156,234 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     localStorage.setItem('personNames', JSON.stringify(personNames));
                 }}
                 
+                // Suggested downloads storage
+                const deletedSuggestions = JSON.parse(localStorage.getItem('deletedSuggestions') || '[]');
+                
+                function isUrlDeleted(url) {{
+                    return deletedSuggestions.includes(url);
+                }}
+                
+                function markUrlAsDeleted(url) {{
+                    if (!deletedSuggestions.includes(url)) {{
+                        deletedSuggestions.push(url);
+                        localStorage.setItem('deletedSuggestions', JSON.stringify(deletedSuggestions));
+                    }}
+                }}
+                
+                async function scanBrowserHistory() {{
+                    const scanBtn = document.getElementById('scanHistoryBtn');
+                    const scanStatus = document.getElementById('scanStatus');
+                    const daysSelect = document.getElementById('historyDaysSelect');
+                    const suggestedContainer = document.getElementById('suggestedDownloads');
+                    
+                    const days = parseInt(daysSelect.value);
+                    
+                    // Disable button and show loading
+                    scanBtn.disabled = true;
+                    scanBtn.textContent = '🔍 Scanning...';
+                    scanStatus.textContent = 'Searching browser history...';
+                    
+                    try {{
+                        // Access browser history (requires history permission)
+                        if (!chrome || !chrome.history) {{
+                            throw new Error('Browser history access not available');
+                        }}
+                        
+                        const startTime = Date.now() - (days * 24 * 60 * 60 * 1000);
+                        
+                        const historyItems = await new Promise((resolve, reject) => {{
+                            chrome.history.search({{
+                                text: '',
+                                maxResults: 10000,
+                                startTime: startTime
+                            }}, (results) => {{
+                                if (chrome.runtime.lastError) {{
+                                    reject(chrome.runtime.lastError);
+                                }} else {{
+                                    resolve(results);
+                                }}
+                            }});
+                        }});
+                        
+                        scanStatus.textContent = `Found ${{historyItems.length}} history items, analyzing...`;
+                        
+                        // Filter for video URLs and count visits
+                        const videoUrls = {{}};
+                        const videoSitePatterns = [
+                            /youtube\\.com\\/watch/i,
+                            /youtu\\.be\\//i,
+                            /vimeo\\.com\\/\\d+/i,
+                            /dailymotion\\.com\\/video/i,
+                            /tiktok\\.com\\/.*\\/video/i,
+                            /instagram\\.com\\/p\\//i,
+                            /instagram\\.com\\/reel\\//i,
+                            /facebook\\.com\\/.*\\/videos/i,
+                            /twitter\\.com\\/.*\\/status/i,
+                            /x\\.com\\/.*\\/status/i,
+                            /twitch\\.tv\\/videos/i,
+                            /pornhub\\.com\\/view_video/i,
+                            /xvideos\\.com\\/video/i,
+                            /xhamster\\.com\\/videos/i,
+                            /redtube\\.com\\/\\d+/i,
+                            /tnaflix\\.com\\/.*\\/video/i,
+                            /\/watch|\/video|\/v[\\?\\/]|\\/(p|reel)\\//i
+                        ];
+                        
+                        for (const item of historyItems) {{
+                            if (!item.url || !item.title) continue;
+                            
+                            // Check if URL matches video patterns
+                            const isVideoUrl = videoSitePatterns.some(pattern => pattern.test(item.url));
+                            if (!isVideoUrl) continue;
+                            
+                            // Skip if URL was deleted by user
+                            if (isUrlDeleted(item.url)) continue;
+                            
+                            // Count visits
+                            if (!videoUrls[item.url]) {{
+                                videoUrls[item.url] = {{
+                                    title: item.title,
+                                    url: item.url,
+                                    visitCount: 0,
+                                    lastVisit: item.lastVisitTime
+                                }};
+                            }}
+                            videoUrls[item.url].visitCount++;
+                            
+                            // Update last visit time if more recent
+                            if (item.lastVisitTime > videoUrls[item.url].lastVisit) {{
+                                videoUrls[item.url].lastVisit = item.lastVisitTime;
+                            }}
+                        }}
+                        
+                        // Filter for URLs visited 3+ times and sort by visit count
+                        const suggestions = Object.values(videoUrls)
+                            .filter(item => item.visitCount >= 3)
+                            .sort((a, b) => {{
+                                // Sort by visit count (descending), then by recency
+                                if (a.visitCount !== b.visitCount) {{
+                                    return b.visitCount - a.visitCount;
+                                }}
+                                return b.lastVisit - a.lastVisit;
+                            }})
+                            .slice(0, 20); // Limit to top 20 suggestions
+                        
+                        displaySuggestions(suggestions);
+                        scanStatus.textContent = `Found ${{suggestions.length}} suggested downloads`;
+                        
+                    }} catch (error) {{
+                        console.error('Error scanning browser history:', error);
+                        scanStatus.textContent = 'Error accessing browser history';
+                        suggestedContainer.innerHTML = `
+                            <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-color); opacity: 0.7;">
+                                ❌ Could not access browser history. Make sure the extension has history permission.
+                            </div>
+                        `;
+                    }} finally {{
+                        // Re-enable button
+                        scanBtn.disabled = false;
+                        scanBtn.textContent = '🔍 Scan History';
+                    }}
+                }}
+                
+                function displaySuggestions(suggestions) {{
+                    const container = document.getElementById('suggestedDownloads');
+                    
+                    if (suggestions.length === 0) {{
+                        container.innerHTML = `
+                            <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-color); opacity: 0.7;">
+                                No frequently visited videos found. Try increasing the number of days or visit videos multiple times.
+                            </div>
+                        `;
+                        return;
+                    }}
+                    
+                    const suggestionsHtml = suggestions.map(item => {{
+                        const lastVisitDate = new Date(item.lastVisit).toLocaleDateString();
+                        return `
+                            <div class="suggestion-item" data-url="${{item.url}}">
+                                <div class="suggestion-info">
+                                    <div class="suggestion-title" title="${{item.title}}">${{item.title}}</div>
+                                    <div class="suggestion-url" title="${{item.url}}">${{item.url}}</div>
+                                    <div class="suggestion-meta">Visited ${{item.visitCount}} times • Last: ${{lastVisitDate}}</div>
+                                </div>
+                                <div class="suggestion-actions">
+                                    <button class="suggestion-btn download" onclick="downloadSuggestion('${{item.url}}', '${{item.title.replace(/'/g, "\\\\'")}}')">
+                                        📥 Download
+                                    </button>
+                                    <button class="suggestion-btn delete" onclick="deleteSuggestion('${{item.url}}')">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }}).join('');
+                    
+                    container.innerHTML = suggestionsHtml;
+                }}
+                
+                async function downloadSuggestion(url, title) {{
+                    try {{
+                        const response = await fetch('/download', {{
+                            method: 'POST',
+                            headers: {{
+                                'Content-Type': 'application/json',
+                            }},
+                            body: JSON.stringify({{ url: url, title: title }})
+                        }});
+                        
+                        if (response.ok) {{
+                            const result = await response.json();
+                            console.log('Download started:', result);
+                            
+                            // Refresh downloads to show the new download
+                            updateDownloads();
+                            
+                            // Show success message
+                            const scanStatus = document.getElementById('scanStatus');
+                            scanStatus.textContent = `Started downloading: ${{title}}`;
+                            setTimeout(() => {{
+                                scanStatus.textContent = '';
+                            }}, 3000);
+                        }} else {{
+                            throw new Error('Failed to start download');
+                        }}
+                    }} catch (error) {{
+                        console.error('Error starting download:', error);
+                        alert('Failed to start download. Please try again.');
+                    }}
+                }}
+                
+                function deleteSuggestion(url) {{
+                    // Mark URL as deleted
+                    markUrlAsDeleted(url);
+                    
+                    // Remove from UI
+                    const suggestionItem = document.querySelector(`[data-url="${{url}}"]`);
+                    if (suggestionItem) {{
+                        suggestionItem.remove();
+                        
+                        // Check if there are any suggestions left
+                        const container = document.getElementById('suggestedDownloads');
+                        const remainingSuggestions = container.querySelectorAll('.suggestion-item');
+                        
+                        if (remainingSuggestions.length === 0) {{
+                            container.innerHTML = `
+                                <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-color); opacity: 0.7;">
+                                    No suggestions remaining. Click "Scan History" to find new suggestions.
+                                </div>
+                            `;
+                        }}
+                        
+                        // Update status
+                        const scanStatus = document.getElementById('scanStatus');
+                        scanStatus.textContent = 'Suggestion removed';
+                        setTimeout(() => {{
+                            scanStatus.textContent = '';
+                        }}, 2000);
+                    }}
+                }}
+                
                 // Dark mode functionality
                 function initializeTheme() {{
                     const themeToggle = document.getElementById('themeToggle');
@@ -3064,6 +3408,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     loadDownloadedFiles();
                     updateDownloads();
                     setInterval(updateDownloads, 2000); // Update every 2 seconds
+                    
+                    // Auto-scan browser history for the past week on page load
+                    setTimeout(() => {{
+                        if (chrome && chrome.history) {{
+                            scanBrowserHistory();
+                        }}
+                    }}, 1000); // Delay to let other initialization complete
                     
                 }});
                 
