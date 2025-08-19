@@ -90,6 +90,56 @@
     return true; // Keep message channel open for async response
   });
   
+  // Listen for messages from localhost web page (VidSnatch web interface)
+  window.addEventListener('message', async (event) => {
+    // Only accept messages from localhost:8080
+    if (event.origin !== 'http://localhost:8080') return;
+    
+    if (event.data.action === 'scanSuggestedDownloads') {
+      const requestId = event.data.requestId;
+      
+      try {
+        // Check if chrome.runtime is available
+        if (!chrome || !chrome.runtime) {
+          throw new Error('Chrome extension runtime not available');
+        }
+        
+        // Set a timeout for the background script response
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Background script timeout')), 8000);
+        });
+        
+        // Forward the request to the background script with timeout
+        const messagePromise = chrome.runtime.sendMessage({
+          action: 'scanSuggestedDownloads',
+          days: event.data.days || 7
+        });
+        
+        const response = await Promise.race([messagePromise, timeoutPromise]);
+        
+        // Send response back to web page
+        window.postMessage({
+          action: 'scanSuggestedDownloadsResponse',
+          requestId: requestId,
+          response: response
+        }, event.origin);
+        
+      } catch (error) {
+        console.error('Content script error:', error);
+        
+        // Send error response back to web page
+        window.postMessage({
+          action: 'scanSuggestedDownloadsResponse',
+          requestId: requestId,
+          response: {
+            success: false,
+            error: `Extension error: ${error.message}`
+          }
+        }, event.origin);
+      }
+    }
+  });
+  
   // Send page info to background script when page loads
   setTimeout(() => {
     const videoInfo = extractVideoInfo();

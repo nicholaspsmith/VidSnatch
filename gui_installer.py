@@ -578,7 +578,7 @@ class VidSnatchInstaller:
         
         # Copy Python server files from current directory
         self.log_output("🐍 Installing Python server...")
-        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py']
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py', 'file_metadata.py']
         for file in server_files:
             src_path = os.path.join(self.current_dir, file)
             if os.path.exists(src_path):
@@ -788,12 +788,8 @@ python3 menubar_app.py
                 os.remove(shortcut)
                 self.log_output(f"✅ Removed old desktop shortcut: {os.path.basename(shortcut)}")
         
-        # Clear menu bar cache by refreshing dock
-        try:
-            subprocess.run("killall -KILL Dock 2>/dev/null", shell=True, capture_output=True)
-            self.log_output("✅ Refreshed menu bar and dock")
-        except:
-            pass
+        # Note: We don't restart the Dock as it un-minimizes applications
+        self.log_output("✅ Menu bar items will be cleared on next login")
             
         return True
         
@@ -864,7 +860,7 @@ except Exception as e:
         
         # Copy Python server files from current directory
         print("🐍 Installing Python server...")
-        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py']
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py', 'file_metadata.py']
         for file in server_files:
             src_path = os.path.join(self.current_dir, file)
             if os.path.exists(src_path):
@@ -1061,12 +1057,8 @@ python3 menubar_app.py
                 os.remove(shortcut)
                 print(f"✅ Removed old desktop shortcut: {os.path.basename(shortcut)}")
         
-        # Clear menu bar cache by refreshing dock
-        try:
-            subprocess.run("killall -KILL Dock 2>/dev/null", shell=True, capture_output=True)
-            print("✅ Refreshed menu bar and dock")
-        except:
-            pass
+        # Note: We don't restart the Dock as it un-minimizes applications
+        print("✅ Menu bar items will be cleared on next login")
             
         return True
 

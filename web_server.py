@@ -2149,6 +2149,30 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     --secondary-text-color: #bbb;
                 }}
                 
+                /* Dark mode specific element styles */
+                [data-theme="dark"] .download-item {{
+                    background: #3c3c3c;
+                    border: 1px solid #555;
+                }}
+                
+                [data-theme="dark"] .video-controls {{
+                    background: rgba(45, 45, 45, 0.95);
+                    backdrop-filter: blur(10px);
+                }}
+                
+                [data-theme="dark"] .downloads-list {{
+                    background: #2c2c2c;
+                    border: 1px solid #404040;
+                }}
+                
+                [data-theme="dark"] .video-title {{
+                    color: #e0e0e0;
+                }}
+                
+                [data-theme="dark"] .video-meta {{
+                    color: #bbb;
+                }}
+                
                 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
                 
                 body {{
@@ -4783,35 +4807,44 @@ The web interface is limited by browser security - only extensions can access hi
                     suggestedDownloads.innerHTML = '';
                     
                     try {{
-                        // Send message to Chrome extension to scan history
-                        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {{
-                            const response = await new Promise((resolve, reject) => {{
-                                chrome.runtime.sendMessage(
-                                    {{ action: 'scanSuggestedDownloads', days: 7 }},
-                                    (response) => {{
-                                        if (chrome.runtime.lastError) {{
-                                            reject(new Error('Extension communication failed: ' + chrome.runtime.lastError.message));
-                                        }} else {{
-                                            resolve(response);
-                                        }}
-                                    }}
-                                );
-                            }});
+                        // Use postMessage to communicate with Chrome extension via content script
+                        const requestId = 'suggestions_' + Date.now();
+                        
+                        const response = await new Promise((resolve, reject) => {{
+                            const timeout = setTimeout(() => {{
+                                reject(new Error('Extension communication timeout. Make sure the VidSnatch Chrome extension is installed and enabled.'));
+                            }}, 10000); // 10 second timeout
                             
-                            if (response.success) {{
-                                const suggestions = response.suggestions || [];
-                                displaySuggestions(suggestions);
-                                scanStatus.textContent = `Found ${{suggestions.length}} suggested downloads`;
-                            }} else {{
-                                scanStatus.textContent = 'Error: ' + response.error;
-                                suggestedDownloads.innerHTML = `
-                                    <div style="text-align: center; padding: 20px; color: var(--secondary-text-color);">
-                                        ${{response.error}}
-                                    </div>
-                                `;
-                            }}
+                            const messageHandler = (event) => {{
+                                if (event.data.action === 'scanSuggestedDownloadsResponse' && 
+                                    event.data.requestId === requestId) {{
+                                    clearTimeout(timeout);
+                                    window.removeEventListener('message', messageHandler);
+                                    resolve(event.data.response);
+                                }}
+                            }};
+                            
+                            window.addEventListener('message', messageHandler);
+                            
+                            // Send message to content script
+                            window.postMessage({{
+                                action: 'scanSuggestedDownloads',
+                                requestId: requestId,
+                                days: 7
+                            }}, window.location.origin);
+                        }});
+                        
+                        if (response.success) {{
+                            const suggestions = response.suggestions || [];
+                            displaySuggestions(suggestions);
+                            scanStatus.textContent = `Found ${{suggestions.length}} suggested downloads`;
                         }} else {{
-                            throw new Error('Chrome extension not available. Please install the VidSnatch browser extension.');
+                            scanStatus.textContent = 'Error: ' + response.error;
+                            suggestedDownloads.innerHTML = `
+                                <div style="text-align: center; padding: 20px; color: var(--secondary-text-color);">
+                                    ${{response.error}}
+                                </div>
+                            `;
                         }}
                     }} catch (error) {{
                         console.error('Error loading suggestions:', error);
