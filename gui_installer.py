@@ -133,14 +133,13 @@ class VidSnatchInstaller:
         
         # Create a centered frame for the extension description
         extension_desc_frame = ttk.Frame(extension_frame)
-        extension_desc_frame.grid(row=0, column=0, pady=(0, 10), sticky='ew')
+        extension_desc_frame.grid(row=0, column=0, pady=(0, 10))
         extension_frame.columnconfigure(0, weight=1)
-        extension_desc_frame.columnconfigure(0, weight=1)
         
         extension_info = ttk.Label(extension_desc_frame, 
                                   text="After installing VidSnatch, set up the Chrome extension to download videos directly from web pages.",
                                   wraplength=500, justify=tk.LEFT)
-        extension_info.grid(row=0, column=0, sticky='w')
+        extension_info.pack()
         
         extension_button = ttk.Button(extension_frame, text="🌐 Setup Chrome Extension", 
                                      command=self.setup_chrome_extension, style='Large.TButton')
