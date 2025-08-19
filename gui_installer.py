@@ -62,11 +62,17 @@ class VidSnatchInstaller:
                                font=("Helvetica", 24, "bold"))
         title_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
         
-        # Description
+        # Description - create centered frame with left-aligned text
+        desc_frame = ttk.Frame(main_frame)
+        desc_frame.grid(row=1, column=0, columnspan=2, pady=(0, 20))
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        desc_frame.columnconfigure(0, weight=1)
+        
         desc_text = ("VidSnatch is a powerful video downloader that works with YouTube and many other sites.\n"
                     "It includes a menu bar app and Chrome extension for easy video downloading.")
-        desc_label = ttk.Label(main_frame, text=desc_text, justify=tk.CENTER, wraplength=500)
-        desc_label.grid(row=1, column=0, columnspan=2, pady=(0, 20))
+        desc_label = ttk.Label(desc_frame, text=desc_text, justify=tk.LEFT, wraplength=500)
+        desc_label.grid(row=0, column=0, sticky='w')
         
         # Status frame
         status_frame = ttk.LabelFrame(main_frame, text="Installation Status", padding="10")
@@ -125,10 +131,16 @@ class VidSnatchInstaller:
         # Configure extension frame to center content
         extension_frame.columnconfigure(0, weight=1)
         
-        extension_info = ttk.Label(extension_frame, 
+        # Create a centered frame for the extension description
+        extension_desc_frame = ttk.Frame(extension_frame)
+        extension_desc_frame.grid(row=0, column=0, pady=(0, 10), sticky='ew')
+        extension_frame.columnconfigure(0, weight=1)
+        extension_desc_frame.columnconfigure(0, weight=1)
+        
+        extension_info = ttk.Label(extension_desc_frame, 
                                   text="After installing VidSnatch, set up the Chrome extension to download videos directly from web pages.",
-                                  wraplength=500, justify=tk.CENTER)
-        extension_info.grid(row=0, column=0, pady=(0, 10), sticky='ew')
+                                  wraplength=500, justify=tk.LEFT)
+        extension_info.grid(row=0, column=0, sticky='w')
         
         extension_button = ttk.Button(extension_frame, text="🌐 Setup Chrome Extension", 
                                      command=self.setup_chrome_extension, style='Large.TButton')
