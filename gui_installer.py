@@ -291,14 +291,14 @@ class VidSnatchInstaller:
                     self.is_installed = self.check_installation()
                     self.update_status()
                     
-                    messagebox.showinfo("Success", "VidSnatch installed successfully!\n\nLook for the VidSnatch icon in your menu bar.")
+                    self.log_output("\n✅ VidSnatch is now ready to use! Check your menu bar for the VidSnatch icon.")
                 else:
                     self.log_output("\n❌ Installation failed. Please check the output above.")
-                    messagebox.showerror("Error", "Installation failed. Please check the output for details.")
+                    self.log_output("❌ You may need to install missing dependencies or fix permission issues.")
                     
             except Exception as e:
                 self.log_output(f"\n❌ Installation error: {str(e)}")
-                messagebox.showerror("Error", f"Installation error: {str(e)}")
+                self.log_output("❌ Please check the error details above and try again.")
                 
             finally:
                 self.enable_buttons()
@@ -326,14 +326,14 @@ class VidSnatchInstaller:
                     self.is_installed = self.check_installation()
                     self.update_status()
                     
-                    messagebox.showinfo("Success", "VidSnatch uninstalled successfully!")
+                    self.log_output("\n✅ VidSnatch has been completely removed from your system.")
                 else:
                     self.log_output("\n❌ Uninstallation failed. Please check the output above.")
-                    messagebox.showerror("Error", "Uninstallation failed. Please check the output for details.")
+                    self.log_output("❌ Some files may not have been removed. You can try again or manually delete the installation directory.")
                     
             except Exception as e:
                 self.log_output(f"\n❌ Uninstallation error: {str(e)}")
-                messagebox.showerror("Error", f"Uninstallation error: {str(e)}")
+                self.log_output("❌ Please check the error details above and try again.")
                 
             finally:
                 self.enable_buttons()
@@ -358,7 +358,7 @@ class VidSnatchInstaller:
                 
                 if not uninstall_success:
                     self.log_output("❌ Uninstall phase failed, aborting reinstall.")
-                    messagebox.showerror("Error", "Uninstall phase failed. Please check the output for details.")
+                    self.log_output("❌ Please check the output above for details and try again.")
                     return
                     
                 # Wait a moment between operations
@@ -371,14 +371,16 @@ class VidSnatchInstaller:
                 if install_success:
                     self.log_output("\n🎉 Reinstallation completed successfully!")
                     self.is_installed = True
-                    messagebox.showinfo("Success", "VidSnatch reinstalled successfully!")
+                    # Update status instead of showing popup to avoid un-minimizing apps
+                    self.update_status()
+                    self.log_output("\n✅ VidSnatch has been successfully reinstalled and is ready to use!")
                 else:
                     self.log_output("\n❌ Install phase failed.")
-                    messagebox.showerror("Error", "Install phase failed. Please check the output for details.")
+                    self.log_output("❌ Please check the output above for details and try again.")
                     
             except Exception as e:
                 self.log_output(f"\n❌ Reinstallation error: {str(e)}")
-                messagebox.showerror("Error", f"Reinstallation error: {str(e)}")
+                self.log_output("❌ Please check the error details above and try again.")
                 
             finally:
                 self.enable_buttons()

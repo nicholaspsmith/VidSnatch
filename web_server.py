@@ -2419,19 +2419,21 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     max-height: 400px;
                     overflow-y: auto;
                     margin-top: 15px;
-                    border: 1px solid #e0e0e0;
+                    border: 1px solid var(--card-border);
                     border-radius: 8px;
-                    background: white;
+                    background: var(--card-bg);
                 }}
                 
                 .files-table {{
                     width: 100%;
                     border-collapse: collapse;
                     font-size: 0.9rem;
+                    background: var(--card-bg);
+                    color: var(--text-color);
                 }}
                 
                 .files-table thead {{
-                    background: #f5f5f5;
+                    background: var(--table-header-bg);
                     position: sticky;
                     top: 0;
                     z-index: 10;
@@ -2440,9 +2442,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 .files-table th {{
                     text-align: left;
                     padding: 10px 12px;
-                    border-bottom: 2px solid #e0e0e0;
+                    border-bottom: 2px solid var(--table-border);
                     font-weight: 600;
-                    color: #333;
+                    color: var(--text-color);
                     user-select: none;
                 }}
                 
@@ -2479,6 +2481,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
+                    color: var(--text-color);
                 }}
                 
                 .file-name-cell {{
@@ -3528,107 +3531,198 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 async function searchBrowserHistoryForUrl(filename) {{
                     try {{
-                        // Clean filename for comparison (remove extensions but preserve more structure)
-                        const baseFilename = filename
-                            .replace(/\\.part$/, '')
-                            .replace(/\\.ytdl$/, '')
-                            .replace(/\\.temp$/, '')
-                            .replace(/\\.[^.]+$/, ''); // Remove file extension
+                        // More aggressive cleaning to remove all file extensions and partial indicators
+                        let searchTitle = filename
+                            .replace(/\\.part$/, '')      // Remove .part
+                            .replace(/\\.ytdl$/, '')      // Remove .ytdl  
+                            .replace(/\\.temp$/, '')      // Remove .temp
+                            .replace(/\\.crdownload$/, '') // Remove .crdownload
+                            .replace(/\\.[a-zA-Z0-9]{{2,4}}$/, ''); // Remove common file extensions
                         
-                        console.log('Searching browser history for:', baseFilename);
+                        // Remove any remaining partial indicators
+                        searchTitle = searchTitle
+                            .replace(/\\s*\\(\\d+\\)$/, '') // Remove (1), (2) etc at end
+                            .replace(/\\s*-\\s*Copy$/, '')   // Remove - Copy
+                            .trim();
+                        
+                        console.log(`Searching browser history for: "${{searchTitle}}" (cleaned from "${{filename}}")`);
                         
                         // Search browser history (requires history permission)
                         if (chrome && chrome.history) {{
                             const historyItems = await new Promise((resolve) => {{
                                 chrome.history.search({{
                                     text: '',
-                                    maxResults: 2000,
-                                    startTime: Date.now() - (30 * 24 * 60 * 60 * 1000) // Last 30 days (increased from 7)
+                                    maxResults: 3000,
+                                    startTime: Date.now() - (30 * 24 * 60 * 60 * 1000) // Last 30 days
                                 }}, resolve);
                             }});
                             
                             console.log(`Searching through ${{historyItems.length}} history items`);
                             
-                            // Find the best matching URL using multiple strategies
-                            let bestMatch = null;
-                            let bestScore = 0;
-                            let matchStrategy = '';
+                            // Sort by visit time (most recent first)
+                            const sortedItems = historyItems
+                                .filter(item => item.title && item.url)
+                                .sort((a, b) => b.lastVisitTime - a.lastVisitTime);
                             
-                            for (const item of historyItems) {{
-                                if (!item.title || !item.url) continue;
+                            // Find matching URLs with fuzzy search - try up to 4 attempts
+                            const candidates = [];
+                            
+                            for (const item of sortedItems) {{
+                                // Check if URL contains video-related indicators
+                                const isVideoUrl = /\\/(watch|video|v)[\\/\\?]|youtube\\.com|vimeo\\.com|dailymotion|tiktok|instagram|facebook\\.com\\/.*\\/videos|twitter\\.com\\/.*\\/status/i.test(item.url);
                                 
                                 let score = 0;
                                 let strategy = '';
                                 
                                 // Strategy 1: Exact substring match (case-insensitive)
-                                if (item.title.toLowerCase().includes(baseFilename.toLowerCase())) {{
-                                    score = 1.0; // Highest score for exact match
-                                    strategy = 'exact_substring';
-                                }} else if (baseFilename.toLowerCase().includes(item.title.toLowerCase()) && item.title.length > 10) {{
-                                    score = 0.95; // Very high score if title is contained in filename
-                                    strategy = 'title_in_filename';
+                                if (item.title.toLowerCase().includes(searchTitle.toLowerCase())) {{
+                                    score = 1.0;
+                                    strategy = 'exact_match';
+                                }} else if (searchTitle.toLowerCase().includes(item.title.toLowerCase()) && item.title.length > 8) {{
+                                    score = 0.95;
+                                    strategy = 'title_in_search';
                                 }} else {{
-                                    // Strategy 2: Word-based similarity with less aggressive cleaning
-                                    const cleanFilename = baseFilename
-                                        .toLowerCase()
-                                        .replace(/[-_]/g, ' ') // Convert dashes/underscores to spaces
-                                        .replace(/[()]/g, ' ') // Convert parentheses to spaces but keep content
-                                        .replace(/\\s+/g, ' ') // Collapse multiple spaces
-                                        .trim();
+                                    // Strategy 2: Fuzzy matching with Levenshtein-like algorithm
+                                    score = calculateFuzzyMatch(searchTitle.toLowerCase(), item.title.toLowerCase());
+                                    strategy = 'fuzzy_match';
                                     
-                                    const cleanTitle = item.title
-                                        .toLowerCase()
-                                        .replace(/[-_]/g, ' ')
-                                        .replace(/[()]/g, ' ')
-                                        .replace(/\\s+/g, ' ')
-                                        .trim();
-                                    
-                                    score = calculateSimilarity(cleanFilename, cleanTitle);
-                                    strategy = 'word_similarity';
-                                    
-                                    // Strategy 3: Check for key identifiers (numbers, unique terms)
-                                    const filenameNumbers = baseFilename.match(/\\d{{2,}}/g) || [];
+                                    // Boost score for matching numbers/dates
+                                    const searchNumbers = searchTitle.match(/\\d{{2,}}/g) || [];
                                     const titleNumbers = item.title.match(/\\d{{2,}}/g) || [];
-                                    if (filenameNumbers.length > 0 && titleNumbers.length > 0) {{
-                                        const numberMatches = filenameNumbers.filter(num => titleNumbers.includes(num)).length;
-                                        if (numberMatches > 0) {{
-                                            score += 0.3; // Boost score for matching numbers
-                                            strategy += '+numbers';
-                                        }}
+                                    const numberMatches = searchNumbers.filter(num => titleNumbers.includes(num)).length;
+                                    if (numberMatches > 0) {{
+                                        score += 0.15 * numberMatches; // Boost for number matches
+                                        strategy += '+numbers';
                                     }}
                                 }}
                                 
-                                if (score > bestScore && score > 0.2) {{ // Lower threshold for better matching
-                                    bestMatch = item;
-                                    bestScore = score;
-                                    matchStrategy = strategy;
-                                    console.log(`New best match (${{strategy}}, score: ${{score.toFixed(2)}}):`, item.title, item.url);
+                                // Boost video URLs
+                                if (isVideoUrl && score > 0.3) {{
+                                    score += 0.1;
+                                    strategy += '+video_url';
+                                }}
+                                
+                                // Only consider matches above 90% similarity (0.9) as requested
+                                if (score >= 0.9) {{
+                                    candidates.push({{
+                                        item: item,
+                                        score: score,
+                                        strategy: strategy,
+                                        isVideoUrl: isVideoUrl
+                                    }});
                                 }}
                             }}
                             
-                            if (bestMatch) {{
-                                console.log(`Found matching URL using ${{matchStrategy}} (score: ${{bestScore.toFixed(2)}}):`, bestMatch);
+                            // Sort candidates by score (highest first), then by video URL preference, then by recency
+                            candidates.sort((a, b) => {{
+                                if (Math.abs(a.score - b.score) < 0.01) {{
+                                    if (a.isVideoUrl !== b.isVideoUrl) return a.isVideoUrl ? -1 : 1;
+                                    return b.item.lastVisitTime - a.item.lastVisitTime;
+                                }}
+                                return b.score - a.score;
+                            }});
+                            
+                            console.log(`Found ${{candidates.length}} candidates with 90%+ similarity`);
+                            
+                            // Try up to 4 candidates
+                            for (let i = 0; i < Math.min(4, candidates.length); i++) {{
+                                const candidate = candidates[i];
+                                console.log(`Trying candidate ${{i + 1}}: ${{candidate.strategy}}, score: ${{candidate.score.toFixed(3)}}, title: "${{candidate.item.title}}", url: ${{candidate.item.url}}`);
                                 
-                                // Create a failed_download object for the retry
-                                const failed_download = {{
-                                    url: bestMatch.url,
-                                    title: bestMatch.title,
-                                    open_folder: true
-                                }};
-                                
-                                await startRetryWithStoredUrl(filename, failed_download);
-                                return;
+                                try {{
+                                    const failed_download = {{
+                                        url: candidate.item.url,
+                                        title: candidate.item.title,
+                                        open_folder: true
+                                    }};
+                                    
+                                    await startRetryWithStoredUrl(filename, failed_download);
+                                    return; // Success, exit function
+                                }} catch (retryError) {{
+                                    console.log(`Candidate ${{i + 1}} failed, trying next...`, retryError);
+                                    continue;
+                                }}
                             }}
                         }}
                         
-                        // No match found in browser history
-                        console.log('No matching URL found in browser history');
-                        alert(`Could not find a matching URL for "${{filename}}". The file may have been downloaded from a URL that is no longer in your browser history (searched last 30 days).`);
+                        // No suitable match found, open Chrome history
+                        console.log('No matching URL found with 90%+ similarity, opening Chrome history');
+                        
+                        try {{
+                            // Open Chrome history in a new tab
+                            await chrome.tabs.create({{ 
+                                url: 'chrome://history/',
+                                active: true
+                            }});
+                            
+                            // Show user a helpful message
+                            alert(`Could not automatically find a matching URL for "${{searchTitle}}".\n\nOpened Chrome history for manual search. Look for the video page and try downloading again.`);
+                        }} catch (historyError) {{
+                            console.error('Could not open Chrome history:', historyError);
+                            alert(`Could not find a matching URL for "${{searchTitle}}" and unable to open Chrome history.\n\nPlease manually search your browser history for the video page.`);
+                        }}
                         
                     }} catch (error) {{
                         console.error('Error searching browser history:', error);
                         alert(`Could not search browser history for "${{filename}}". Make sure the VidSnatch extension has history permission.`);
                     }}
+                }}
+                
+                function calculateFuzzyMatch(str1, str2) {{
+                    // Simple fuzzy matching algorithm based on character overlap and position
+                    if (!str1 || !str2) return 0;
+                    
+                    // Normalize strings
+                    const s1 = str1.replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
+                    const s2 = str2.replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
+                    
+                    if (s1 === s2) return 1.0;
+                    
+                    // Word-based similarity
+                    const words1 = s1.split(' ').filter(w => w.length > 1);
+                    const words2 = s2.split(' ').filter(w => w.length > 1);
+                    
+                    if (words1.length === 0 || words2.length === 0) return 0;
+                    
+                    let matchedWords = 0;
+                    for (const word1 of words1) {{
+                        for (const word2 of words2) {{
+                            // Exact match
+                            if (word1 === word2) {{
+                                matchedWords += 1;
+                                break;
+                            }}
+                            // Partial match for longer words
+                            else if (word1.length > 3 && word2.length > 3) {{
+                                if (word1.includes(word2) || word2.includes(word1)) {{
+                                    matchedWords += 0.8;
+                                    break;
+                                }}
+                                // Character overlap for similar words
+                                const overlap = calculateCharOverlap(word1, word2);
+                                if (overlap > 0.7) {{
+                                    matchedWords += overlap * 0.6;
+                                    break;
+                                }}
+                            }}
+                        }}
+                    }}
+                    
+                    return matchedWords / Math.max(words1.length, words2.length);
+                }}
+                
+                function calculateCharOverlap(str1, str2) {{
+                    if (!str1 || !str2) return 0;
+                    const len1 = str1.length;
+                    const len2 = str2.length;
+                    const maxLen = Math.max(len1, len2);
+                    
+                    let matches = 0;
+                    for (let i = 0; i < Math.min(len1, len2); i++) {{
+                        if (str1[i] === str2[i]) matches++;
+                    }}
+                    
+                    return matches / maxLen;
                 }}
                 
                 function calculateSimilarity(str1, str2) {{
