@@ -27,7 +27,7 @@ class VidSnatchInstaller:
     def __init__(self, root):
         self.root = root
         self.root.title("VidSnatch Installer")
-        self.root.geometry("600x500")
+        self.root.geometry("600x550")
         self.root.resizable(False, False)
         
         # Center the window on screen
@@ -71,7 +71,7 @@ class VidSnatchInstaller:
         
         desc_text = ("VidSnatch is a powerful video downloader that works with YouTube and many other sites.\n\n"
                     "It includes a menu bar app and Chrome extension for easy video downloading.")
-        desc_label = ttk.Label(desc_frame, text=desc_text, justify=tk.LEFT, wraplength=500)
+        desc_label = ttk.Label(desc_frame, text=desc_text, justify=tk.LEFT, wraplength=480)
         desc_label.grid(row=0, column=0, sticky='w')
         
         # Status frame - create centered frame to match description width
@@ -85,12 +85,18 @@ class VidSnatchInstaller:
         status_frame.grid(row=0, column=0)
         
         self.status_label = ttk.Label(status_frame, text="Checking installation...", 
-                                     font=("Helvetica", 12), wraplength=480)
+                                     font=("Helvetica", 12), wraplength=460)
         self.status_label.grid(row=0, column=0)
         
-        # Buttons frame
-        buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.grid(row=3, column=0, columnspan=2, pady=(0, 20))
+        # Buttons frame - create centered frame to match other container widths
+        buttons_outer_frame = ttk.Frame(main_frame)
+        buttons_outer_frame.grid(row=3, column=0, columnspan=2, pady=(0, 20))
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        buttons_outer_frame.columnconfigure(0, weight=1)
+        
+        buttons_frame = ttk.Frame(buttons_outer_frame)
+        buttons_frame.grid(row=0, column=0)
         
         # Configure button frame to center buttons
         buttons_frame.columnconfigure(0, weight=1)
@@ -130,9 +136,15 @@ class VidSnatchInstaller:
         self.output_text = scrolledtext.ScrolledText(output_frame, height=8, width=70)
         self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Chrome Extension section
-        extension_frame = ttk.LabelFrame(main_frame, text="Chrome Extension Setup", padding="10")
-        extension_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 10))
+        # Chrome Extension section - fixed width to match other containers
+        extension_outer_frame = ttk.Frame(main_frame)
+        extension_outer_frame.grid(row=6, column=0, columnspan=2, pady=(10, 10))
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        extension_outer_frame.columnconfigure(0, weight=1)
+        
+        extension_frame = ttk.LabelFrame(extension_outer_frame, text="Chrome Extension Setup", padding="10")
+        extension_frame.grid(row=0, column=0)
         
         # Configure extension frame to center content
         extension_frame.columnconfigure(0, weight=1)
@@ -144,7 +156,7 @@ class VidSnatchInstaller:
         
         extension_info = ttk.Label(extension_desc_frame, 
                                   text="After installing VidSnatch, set up the Chrome extension to download videos directly from web pages.",
-                                  wraplength=500, justify=tk.LEFT)
+                                  wraplength=460, justify=tk.LEFT)
         extension_info.pack()
         
         extension_button = ttk.Button(extension_frame, text="🌐 Setup Chrome Extension", 
@@ -153,7 +165,7 @@ class VidSnatchInstaller:
         
         # Close button - center between Chrome extension and bottom with proper spacing
         close_button = ttk.Button(main_frame, text="Close", command=self.root.quit, width=15)
-        close_button.grid(row=7, column=0, columnspan=2, pady=(15, 25))
+        close_button.grid(row=7, column=0, columnspan=2, pady=(20, 30))
         
         # Configure grid weights - distribute space better
         self.root.columnconfigure(0, weight=1)
