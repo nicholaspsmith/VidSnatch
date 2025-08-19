@@ -317,7 +317,7 @@ def cleanup_partial_files(download_id, title):
         return []
 
 def find_matching_failed_download(filename):
-    """Find a failed download that matches a partial file (98% name similarity)."""
+    """Find a failed download that matches a partial file using multiple matching strategies."""
     global failed_downloads
     
     # Clean filename for comparison (remove extensions and special chars)
@@ -327,31 +327,65 @@ def find_matching_failed_download(filename):
     best_match = None
     best_similarity = 0
     
+    print(f" [+] Searching for match to: '{clean_filename}'")
+    
     for download_id, failed_download in failed_downloads.items():
         # Clean the failed download title for comparison
         clean_title = failed_download['title'].lower()
         clean_title = re.sub(r'[^\w\s-]', '', clean_title).strip()
         
-        # Calculate similarity (simple approach: check how many words match)
-        filename_words = set(clean_filename.split())
-        title_words = set(clean_title.split())
+        print(f" [+] Comparing with: '{clean_title}'")
         
-        if not filename_words or not title_words:
-            continue
-            
-        # Calculate Jaccard similarity (intersection over union)
-        intersection = len(filename_words.intersection(title_words))
-        union = len(filename_words.union(title_words))
-        similarity = intersection / union if union > 0 else 0
+        # Strategy 1: Exact match (after cleaning)
+        if clean_filename == clean_title:
+            print(f" [+] Exact match found!")
+            return (download_id, failed_download)
         
-        # Also check if the title is contained in filename or vice versa
+        # Strategy 2: Substring containment (bidirectional)
         if clean_title in clean_filename or clean_filename in clean_title:
-            similarity = max(similarity, 0.98)
+            similarity = 0.99
+            print(f" [+] Substring match found (similarity: {similarity})")
+        else:
+            # Strategy 3: Word-based similarity
+            filename_words = set(clean_filename.split())
+            title_words = set(clean_title.split())
+            
+            if not filename_words or not title_words:
+                continue
+                
+            # Calculate Jaccard similarity (intersection over union)
+            intersection = len(filename_words.intersection(title_words))
+            union = len(filename_words.union(title_words))
+            similarity = intersection / union if union > 0 else 0
+            
+            print(f" [+] Word similarity: {similarity:.2f}")
         
-        if similarity > best_similarity and similarity >= 0.98:  # 98% threshold
+        # Strategy 4: Check if most words from filename are in title (lowered threshold)
+        if similarity == 0:  # Only if no other similarity found
+            filename_words = set(clean_filename.split())
+            title_words = set(clean_title.split())
+            
+            if filename_words and title_words:
+                # Check what percentage of filename words are in title
+                words_in_title = len(filename_words.intersection(title_words))
+                filename_coverage = words_in_title / len(filename_words) if filename_words else 0
+                
+                # If 80%+ of filename words are in title, consider it a match
+                if filename_coverage >= 0.8:
+                    similarity = 0.85
+                    print(f" [+] High filename coverage match: {filename_coverage:.2f}")
+        
+        # Update best match if this is better (lowered threshold to 80%)
+        if similarity > best_similarity and similarity >= 0.80:
             best_similarity = similarity
             best_match = (download_id, failed_download)
+            print(f" [+] New best match: {similarity:.2f}")
     
+    if best_match:
+        print(f" [+] Final match selected with similarity: {best_similarity:.2f}")
+    else:
+        print(f" [-] No match found (threshold: 0.80)")
+        
     return best_match
 
 def get_video_duration(file_path):
