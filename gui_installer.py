@@ -69,7 +69,7 @@ class VidSnatchInstaller:
         main_frame.columnconfigure(1, weight=1)
         desc_frame.columnconfigure(0, weight=1)
         
-        desc_text = ("VidSnatch is a powerful video downloader that works with YouTube and many other sites.\n"
+        desc_text = ("VidSnatch is a powerful video downloader that works with YouTube and many other sites.\n\n"
                     "It includes a menu bar app and Chrome extension for easy video downloading.")
         desc_label = ttk.Label(desc_frame, text=desc_text, justify=tk.LEFT, wraplength=500)
         desc_label.grid(row=0, column=0, sticky='w')
