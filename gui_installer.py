@@ -27,7 +27,7 @@ class VidSnatchInstaller:
     def __init__(self, root):
         self.root = root
         self.root.title("VidSnatch Installer")
-        self.root.geometry("600x540")
+        self.root.geometry("700x700")
         self.root.resizable(False, False)
         
         # Center the window on screen
@@ -81,8 +81,12 @@ class VidSnatchInstaller:
         main_frame.columnconfigure(1, weight=1)
         status_outer_frame.columnconfigure(0, weight=1)
         
-        status_frame = ttk.LabelFrame(status_outer_frame, text="Installation Status", padding="10")
+        status_frame = ttk.LabelFrame(status_outer_frame, text="Installation Status", padding="10", width=480)
         status_frame.grid(row=0, column=0)
+        status_frame.grid_propagate(False)  # Prevent frame from shrinking to fit content
+        
+        # Configure status frame to center content
+        status_frame.columnconfigure(0, weight=1)
         
         self.status_label = ttk.Label(status_frame, text="Checking installation...", 
                                      font=("Helvetica", 12), wraplength=460)
@@ -109,19 +113,19 @@ class VidSnatchInstaller:
         
         # Install button
         self.install_button = ttk.Button(buttons_frame, text="📦 Install", 
-                                        command=self.install_vidsnatch, width=14,
+                                        command=self.install_vidsnatch, width=12,
                                         style='Large.TButton')
         self.install_button.grid(row=0, column=0, padx=5, sticky='ew')
         
         # Uninstall button
         self.uninstall_button = ttk.Button(buttons_frame, text="🗑️ Uninstall", 
-                                          command=self.uninstall_vidsnatch, width=14,
+                                          command=self.uninstall_vidsnatch, width=12,
                                           style='Large.TButton')
         self.uninstall_button.grid(row=0, column=1, padx=5, sticky='ew')
         
         # Reinstall button
         self.reinstall_button = ttk.Button(buttons_frame, text="🔄 Reinstall", 
-                                          command=self.reinstall_vidsnatch, width=14,
+                                          command=self.reinstall_vidsnatch, width=12,
                                           style='Large.TButton')
         self.reinstall_button.grid(row=0, column=2, padx=5, sticky='ew')
         
@@ -135,11 +139,17 @@ class VidSnatchInstaller:
         self.progress = ttk.Progressbar(progress_outer_frame, mode='indeterminate', length=480)
         self.progress.grid(row=0, column=0)
         
-        # Output text area
-        output_frame = ttk.LabelFrame(main_frame, text="Installation Output", padding="5")
-        output_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        # Output text area - create centered frame to match other container widths
+        output_outer_frame = ttk.Frame(main_frame)
+        output_outer_frame.grid(row=5, column=0, columnspan=2, pady=(0, 10))
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        output_outer_frame.columnconfigure(0, weight=1)
         
-        self.output_text = scrolledtext.ScrolledText(output_frame, height=8, width=70)
+        output_frame = ttk.LabelFrame(output_outer_frame, text="Installation Output", padding="5")
+        output_frame.grid(row=0, column=0)
+        
+        self.output_text = scrolledtext.ScrolledText(output_frame, height=12, width=65)
         self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Chrome Extension section - fixed width to match other containers
@@ -556,6 +566,16 @@ class VidSnatchInstaller:
         
     def run_uninstall_steps(self):
         """Run the actual uninstallation steps"""
+        # First save any active downloads as failed so they can be retried
+        self.log_output("💾 Saving active downloads for retry after reinstall...")
+        save_script = os.path.join(self.current_dir, "save_active_as_failed.py")
+        if os.path.exists(save_script):
+            result = subprocess.run(f"python3 '{save_script}'", shell=True, capture_output=True, text=True)
+            if result.stdout:
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        self.log_output(line)
+        
         # Stop all VidSnatch processes
         self.log_output("🛑 Stopping all VidSnatch processes...")
         
@@ -781,6 +801,14 @@ except Exception as e:
         
     def run_uninstall_steps_cli(self):
         """CLI version of uninstallation steps with print output"""
+        # First save any active downloads as failed so they can be retried
+        print("💾 Saving active downloads for retry after reinstall...")
+        save_script = os.path.join(self.current_dir, "save_active_as_failed.py")
+        if os.path.exists(save_script):
+            result = subprocess.run(f"python3 '{save_script}'", shell=True, capture_output=True, text=True)
+            if result.stdout:
+                print(result.stdout)
+        
         print("🛑 Stopping all VidSnatch processes...")
         
         commands = [

@@ -1,2 +1,62 @@
-modules/__pycache__/
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Build/Distribution
+dist/
+build/
+*.egg-info/
+.eggs/
+macos-installer/
+desktop-app/
+macos-app/
+
+# Logs
+*.log
+.logs/
+logs/
+server.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific
+downloads/
+*.part
+*.ytdl
+*.temp
+.logs/
+VidSnatch.app/
+*.command
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+auto-build-watcher.py
+start-auto-build.sh

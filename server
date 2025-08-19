@@ -1,5 +1,0 @@
-#!/bin/bash
-# VidSnatch Server-Only Script (Unix/macOS/Linux)
-# Equivalent to "npm run server" - starts only the web server for Chrome extension
-
-python3 setup.py server_only.py

@@ -17,7 +17,6 @@ from urllib.parse import urlparse, parse_qs
 # Import with dependency check like main.py
 import modules.config as config
 import modules.utilities as utilities
-from url_tracker import init_tracker, get_tracker
 
 # Check for yt-dlp dependency
 while True:
@@ -318,7 +317,7 @@ def cleanup_partial_files(download_id, title):
         return []
 
 def find_matching_failed_download(filename):
-    """Find a failed download that matches a partial file using multiple matching strategies."""
+    """Find a failed download that matches a partial file (98% name similarity)."""
     global failed_downloads
     
     # Clean filename for comparison (remove extensions and special chars)
@@ -328,200 +327,32 @@ def find_matching_failed_download(filename):
     best_match = None
     best_similarity = 0
     
-    print(f" [+] Searching for match to: '{clean_filename}'")
-    
     for download_id, failed_download in failed_downloads.items():
         # Clean the failed download title for comparison
         clean_title = failed_download['title'].lower()
         clean_title = re.sub(r'[^\w\s-]', '', clean_title).strip()
         
-        print(f" [+] Comparing with: '{clean_title}'")
+        # Calculate similarity (simple approach: check how many words match)
+        filename_words = set(clean_filename.split())
+        title_words = set(clean_title.split())
         
-        # Strategy 1: Exact match (after cleaning)
-        if clean_filename == clean_title:
-            print(f" [+] Exact match found!")
-            return (download_id, failed_download)
-        
-        # Strategy 2: Substring containment (bidirectional)
-        if clean_title in clean_filename or clean_filename in clean_title:
-            similarity = 0.99
-            print(f" [+] Substring match found (similarity: {similarity})")
-        else:
-            # Strategy 3: Word-based similarity
-            filename_words = set(clean_filename.split())
-            title_words = set(clean_title.split())
-            
-            if not filename_words or not title_words:
-                continue
-                
-            # Calculate Jaccard similarity (intersection over union)
-            intersection = len(filename_words.intersection(title_words))
-            union = len(filename_words.union(title_words))
-            similarity = intersection / union if union > 0 else 0
-            
-            print(f" [+] Word similarity: {similarity:.2f}")
-        
-        # Strategy 4: Check if most words from filename are in title (lowered threshold)
-        if similarity == 0:  # Only if no other similarity found
-            filename_words = set(clean_filename.split())
-            title_words = set(clean_title.split())
-            
-            if filename_words and title_words:
-                # Check what percentage of filename words are in title
-                words_in_title = len(filename_words.intersection(title_words))
-                filename_coverage = words_in_title / len(filename_words) if filename_words else 0
-                
-                # If 80%+ of filename words are in title, consider it a match
-                if filename_coverage >= 0.8:
-                    similarity = 0.85
-                    print(f" [+] High filename coverage match: {filename_coverage:.2f}")
-        
-        # Update best match if this is better (lowered threshold to 80%)
-        if similarity > best_similarity and similarity >= 0.80:
-            best_similarity = similarity
-            best_match = (download_id, failed_download)
-            print(f" [+] New best match: {similarity:.2f}")
-    
-    if best_match:
-        print(f" [+] Final match selected with similarity: {best_similarity:.2f}")
-    else:
-        print(f" [-] No match found (threshold: 0.80)")
-        
-    return best_match
-
-def find_matching_active_download(filename):
-    """Find an active download that matches a partial file using multiple matching strategies."""
-    global active_downloads
-    
-    # Clean filename for comparison (remove extensions and special chars)
-    clean_filename = filename.replace('.part', '').replace('.ytdl', '').replace('.temp', '').lower()
-    clean_filename = re.sub(r'[^\w\s-]', '', clean_filename).strip()
-    
-    best_match = None
-    best_similarity = 0
-    
-    print(f" [+] Searching active downloads for match to: '{clean_filename}'")
-    
-    # Load active downloads if they exist
-    try:
-        if os.path.exists(active_downloads_file):
-            with open(active_downloads_file, 'r') as f:
-                active_downloads_data = json.load(f)
-        else:
-            active_downloads_data = {}
-    except:
-        active_downloads_data = {}
-    
-    # Also check currently active downloads in memory
-    all_active = {}
-    all_active.update(active_downloads_data)
-    with download_lock:
-        for did, progress in active_downloads.items():
-            all_active[did] = {
-                'url': progress.url,
-                'title': progress.title,
-                'retry_count': progress.retry_count,
-                'open_folder': progress.open_folder
-            }
-    
-    for download_id, active_download in all_active.items():
-        if not active_download.get('url'):
+        if not filename_words or not title_words:
             continue
             
-        # Clean the active download title for comparison
-        clean_title = active_download.get('title', '').lower()
-        clean_title = re.sub(r'[^\w\s-]', '', clean_title).strip()
+        # Calculate Jaccard similarity (intersection over union)
+        intersection = len(filename_words.intersection(title_words))
+        union = len(filename_words.union(title_words))
+        similarity = intersection / union if union > 0 else 0
         
-        print(f" [+] Comparing with active: '{clean_title}'")
-        
-        # Strategy 1: Exact match (after cleaning)
-        if clean_filename == clean_title:
-            print(f" [+] Exact match found in active downloads!")
-            return (download_id, active_download)
-        
-        # Strategy 2: Substring containment (bidirectional)
+        # Also check if the title is contained in filename or vice versa
         if clean_title in clean_filename or clean_filename in clean_title:
-            similarity = 0.99
-            print(f" [+] Substring match found in active (similarity: {similarity})")
-        else:
-            # Strategy 3: Word-based similarity
-            filename_words = set(clean_filename.split())
-            title_words = set(clean_title.split())
-            
-            if not filename_words or not title_words:
-                continue
-                
-            # Calculate Jaccard similarity (intersection over union)
-            intersection = len(filename_words.intersection(title_words))
-            union = len(filename_words.union(title_words))
-            similarity = intersection / union if union > 0 else 0
-            
-            print(f" [+] Word similarity: {similarity:.2f}")
+            similarity = max(similarity, 0.98)
         
-        # Strategy 4: Check if most words from filename are in title
-        if similarity == 0:  # Only if no other similarity found
-            filename_words = set(clean_filename.split())
-            title_words = set(clean_title.split())
-            
-            if filename_words and title_words:
-                matching_words = len(filename_words.intersection(title_words))
-                if matching_words >= len(filename_words) * 0.5:  # At least 50% of words match
-                    similarity = 0.85
-                    print(f" [+] Partial word match: {matching_words}/{len(filename_words)} words")
-        
-        # Use same lowered threshold as failed downloads (0.80)
-        if similarity >= 0.80 and similarity > best_similarity:
+        if similarity > best_similarity and similarity >= 0.98:  # 98% threshold
             best_similarity = similarity
-            best_match = (download_id, active_download)
-            print(f" [+] New best active match: {similarity:.2f}")
+            best_match = (download_id, failed_download)
     
-    if best_match:
-        print(f" [+] Final active match selected with similarity: {best_similarity:.2f}")
-    else:
-        print(f" [-] No active match found (threshold: 0.80)")
-        
     return best_match
-
-def get_video_duration(file_path):
-    """Get video duration in seconds using ffprobe or fallback methods."""
-    try:
-        # Try using ffprobe first (most accurate)
-        import subprocess
-        result = subprocess.run([
-            'ffprobe', '-v', 'quiet', '-show_entries', 
-            'format=duration', '-of', 'csv=p=0', file_path
-        ], capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0 and result.stdout.strip():
-            duration = float(result.stdout.strip())
-            return round(duration)
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError, FileNotFoundError):
-        pass
-    
-    try:
-        # Fallback: try mediainfo if available
-        result = subprocess.run([
-            'mediainfo', '--Inform=General;%Duration%', file_path
-        ], capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0 and result.stdout.strip():
-            duration_ms = float(result.stdout.strip())
-            return round(duration_ms / 1000)  # Convert ms to seconds
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError, FileNotFoundError):
-        pass
-    
-    try:
-        # Another fallback: try using file size estimation (very rough)
-        # Most videos are roughly 1MB per minute for standard quality
-        file_size = os.path.getsize(file_path)
-        if file_size > 10 * 1024 * 1024:  # Only for files > 10MB
-            estimated_minutes = file_size / (1024 * 1024)  # Rough estimate
-            if estimated_minutes < 300:  # Cap at 5 hours to avoid crazy estimates
-                return round(estimated_minutes * 60)
-    except:
-        pass
-    
-    return None
 
 def auto_cleanup_matching_partial_files(completed_title):
     """Automatically clean up partial files that match a completed download."""
@@ -661,9 +492,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             self.handle_open_file_request()
         elif parsed_path.path.startswith('/stream-video/'):
             self.handle_stream_video_request()
-        elif parsed_path.path.startswith('/find-failed-download-for-file/'):
-            filename = parsed_path.path.split('/')[-1]
-            self.handle_find_failed_download_request(filename)
         elif parsed_path.path == '/':
             self.send_html_response(self.get_web_interface())
         else:
@@ -912,34 +740,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             import urllib.parse
             filename = urllib.parse.unquote(filename)
             
-            print(f" [+] Looking for download matching: {filename}")
+            print(f" [+] Looking for failed download matching: {filename}")
             
-            # First check URL tracker for incomplete downloads
-            tracker = get_tracker()
-            url_match = tracker.find_by_partial_filename(filename)
-            
-            if url_match:
-                url_track_id, url_data = url_match
-                print(f" [+] Found matching URL in tracker: {url_data['title']}")
-                
-                # Convert to failed download format
-                failed_download = {
-                    'url': url_data['url'],
-                    'title': url_data['title'],
-                    'error': url_data.get('last_error', 'Download incomplete'),
-                    'retry_count': url_data.get('attempts', 0),
-                    'open_folder': True
-                }
-                
-                self.send_json_response({
-                    'success': True,
-                    'failed_download': failed_download,
-                    'download_id': url_track_id,
-                    'filename': filename
-                })
-                return
-            
-            # Fallback to old system for compatibility
+            # Find matching failed download
             match_result = find_matching_failed_download(filename)
             
             if match_result:
@@ -953,36 +756,12 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     'filename': filename
                 })
             else:
-                # Also check active downloads (in case of recent crash/restart)
-                print(f" [+] Checking active downloads for: {filename}")
-                match_result = find_matching_active_download(filename)
-                
-                if match_result:
-                    download_id, active_download = match_result
-                    print(f" [+] Found matching active download: {active_download['title']} (ID: {download_id})")
-                    
-                    # Convert to failed download format
-                    failed_download = {
-                        'url': active_download['url'],
-                        'title': active_download.get('title', 'Unknown'),
-                        'error': 'Download interrupted',
-                        'retry_count': active_download.get('retry_count', 0),
-                        'open_folder': active_download.get('open_folder', True)
-                    }
-                    
-                    self.send_json_response({
-                        'success': True,
-                        'failed_download': failed_download,
-                        'download_id': download_id,
-                        'filename': filename
-                    })
-                else:
-                    print(f" [-] No matching download found for: {filename}")
-                    self.send_json_response({
-                        'success': False,
-                        'message': 'No matching download found',
-                        'filename': filename
-                    })
+                print(f" [-] No matching failed download found for: {filename}")
+                self.send_json_response({
+                    'success': False,
+                    'message': 'No matching failed download found',
+                    'filename': filename
+                })
                 
         except Exception as e:
             print(f" [!] Error finding failed download: {e}")
@@ -1168,17 +947,11 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         else:
                             size_str = f"{size/(1024*1024*1024):.1f} GB"
                         
-                        # Get video duration if it's a video file
-                        duration = None
-                        if item.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v')):
-                            duration = get_video_duration(item_path)
-                        
                         files.append({
                             'name': item,
                             'size': size_str,
                             'modified': modified,
-                            'path': item_path,
-                            'duration': duration
+                            'path': item_path
                         })
             except PermissionError:
                 pass
@@ -1502,13 +1275,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             # Generate unique download ID
             download_id = str(uuid.uuid4())
             
-            # Track this URL in the URL tracker
-            tracker = get_tracker()
-            url_track_id = tracker.add_url(url, title)
-            
             # Create progress tracker
             progress = DownloadProgress(download_id, url, title)
-            progress.url_track_id = url_track_id
             
             with download_lock:
                 active_downloads[download_id] = progress
@@ -1776,11 +1544,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 progress.percent = 100.0
                 print(f" [+] Download completed: {progress.title}")
                 
-                # Mark as completed in URL tracker
-                if hasattr(progress, 'url_track_id'):
-                    tracker = get_tracker()
-                    tracker.mark_completed(progress.url_track_id)
-                
                 # Save the final state
                 with download_lock:
                     save_active_downloads()
@@ -1879,11 +1642,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         print(f" [+] Fallback download completed successfully")
                         progress.status = 'completed'
                         progress.percent = 100.0
-                        
-                        # Mark as completed in URL tracker
-                        if hasattr(progress, 'url_track_id'):
-                            tracker = get_tracker()
-                            tracker.mark_completed(progress.url_track_id)
                         
                         # Auto-cleanup matching partial files
                         try:
@@ -1990,11 +1748,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     'retry_count': progress.retry_count,
                     'open_folder': progress.open_folder
                 })
-                
-                # Mark as failed in URL tracker
-                if hasattr(progress, 'url_track_id'):
-                    tracker = get_tracker()
-                    tracker.mark_failed(progress.url_track_id, progress.error)
             
             # Clean up from active downloads after 5 minutes (unless it's a failed download to retry)
             def cleanup():
@@ -2073,62 +1826,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>VidSnatch Control Panel</title>
             <style>
-                :root {{
-                    /* Light mode colors */
-                    --bg-gradient-start: #3d4db7;
-                    --bg-gradient-end: #523a6f;
-                    --text-color: #333;
-                    --card-bg: rgba(255, 255, 255, 0.95);
-                    --card-border: rgba(255, 255, 255, 0.2);
-                    --table-header-bg: #f8f9fa;
-                    --table-hover-bg: #f9f9f9;
-                    --table-border: #f0f0f0;
-                    --table-partial-bg: #fff9f0;
-                    --table-playing-bg: #e8f4ff;
-                    --modal-bg: rgba(0, 0, 0, 0.5);
-                    --modal-content-bg: white;
-                    --btn-bg: #007bff;
-                    --btn-hover-bg: #0056b3;
-                    --btn-danger-bg: #dc3545;
-                    --btn-danger-hover-bg: #c82333;
-                    --input-bg: white;
-                    --input-border: #ddd;
-                    --toggle-bg: #ccc;
-                    --toggle-active-bg: #007bff;
-                }}
-                
-                [data-theme="dark"] {{
-                    /* Dark mode colors */
-                    --bg-gradient-start: #1a1a2e;
-                    --bg-gradient-end: #16213e;
-                    --text-color: #e0e0e0;
-                    --card-bg: rgba(45, 45, 45, 0.95);
-                    --card-border: rgba(255, 255, 255, 0.1);
-                    --table-header-bg: #2c2c2c;
-                    --table-hover-bg: #3a3a3a;
-                    --table-border: #404040;
-                    --table-partial-bg: #3d3520;
-                    --table-playing-bg: #1e3a5f;
-                    --modal-bg: rgba(0, 0, 0, 0.8);
-                    --modal-content-bg: #2c2c2c;
-                    --btn-bg: #0d6efd;
-                    --btn-hover-bg: #0b5ed7;
-                    --btn-danger-bg: #dc3545;
-                    --btn-danger-hover-bg: #bb2d3b;
-                    --input-bg: #3c3c3c;
-                    --input-border: #555;
-                    --toggle-bg: #555;
-                    --toggle-active-bg: #0d6efd;
-                }}
-                
                 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
                 
                 body {{
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+                    background: linear-gradient(135deg, #3d4db7 0%, #523a6f 100%);
                     min-height: 100vh;
-                    color: var(--text-color);
-                    transition: all 0.3s ease;
+                    color: #333;
                 }}
                 
                 .container {{
@@ -2138,92 +1842,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .header {{
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
+                    text-align: center;
                     margin-bottom: 30px;
-                    background: var(--card-bg);
+                    background: rgba(255, 255, 255, 0.95);
                     backdrop-filter: blur(10px);
                     border-radius: 15px;
                     padding: 30px;
                     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                    flex-wrap: wrap;
-                    gap: 20px;
-                }}
-                
-                .header-left {{
-                    display: flex;
-                    flex-direction: column;
-                    align-items: flex-start;
-                }}
-                
-                .theme-toggle {{
-                    display: flex;
-                    align-items: center;
-                }}
-                
-                .toggle-switch {{
-                    position: relative;
-                    display: inline-block;
-                    width: 60px;
-                    height: 30px;
-                    cursor: pointer;
-                }}
-                
-                .toggle-switch input {{
-                    opacity: 0;
-                    width: 0;
-                    height: 0;
-                }}
-                
-                .toggle-slider {{
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background-color: var(--toggle-bg);
-                    transition: 0.3s;
-                    border-radius: 30px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: 3px 6px;
-                }}
-                
-                .toggle-slider:before {{
-                    position: absolute;
-                    content: "";
-                    height: 24px;
-                    width: 24px;
-                    left: 3px;
-                    bottom: 3px;
-                    background-color: white;
-                    transition: 0.3s;
-                    border-radius: 50%;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                }}
-                
-                input:checked + .toggle-slider {{
-                    background-color: var(--toggle-active-bg);
-                }}
-                
-                input:checked + .toggle-slider:before {{
-                    transform: translateX(30px);
-                }}
-                
-                .toggle-icon {{
-                    font-size: 12px;
-                    z-index: 1;
-                    pointer-events: none;
-                }}
-                
-                .toggle-icon.light {{
-                    margin-left: 2px;
-                }}
-                
-                .toggle-icon.dark {{
-                    margin-right: 2px;
                 }}
                 
                 .logo {{
@@ -2250,7 +1875,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .card {{
-                    background: var(--card-bg);
+                    background: rgba(255, 255, 255, 0.95);
                     backdrop-filter: blur(10px);
                     border-radius: 15px;
                     padding: 25px;
@@ -2896,19 +2521,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             <div class="container">
                 <!-- Header with Logo -->
                 <div class="header">
-                    <div class="header-left">
-                        <div class="logo">🎬 VidSnatch</div>
-                        <div class="tagline">Download videos from 1000+ sites with ease</div>
-                    </div>
-                    <div class="theme-toggle">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="themeToggle">
-                            <span class="toggle-slider">
-                                <span class="toggle-icon light">☀️</span>
-                                <span class="toggle-icon dark">🌙</span>
-                            </span>
-                        </label>
-                    </div>
+                    <div class="logo">🎬 VidSnatch</div>
+                    <div class="tagline">Download videos from 1000+ sites with ease</div>
                 </div>
                 
                 <!-- Video Player Section -->
@@ -3025,26 +2639,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             <script>
                 let currentFolder = '';
                 
-                // Dark mode functionality
-                function initializeTheme() {{
-                    const themeToggle = document.getElementById('themeToggle');
-                    const savedTheme = localStorage.getItem('theme') || 'light';
-                    
-                    // Apply saved theme
-                    document.documentElement.setAttribute('data-theme', savedTheme);
-                    themeToggle.checked = savedTheme === 'dark';
-                    
-                    // Add event listener for toggle
-                    themeToggle.addEventListener('change', function() {{
-                        const newTheme = this.checked ? 'dark' : 'light';
-                        document.documentElement.setAttribute('data-theme', newTheme);
-                        localStorage.setItem('theme', newTheme);
-                    }});
-                }}
-
                 // Initialize the page
                 document.addEventListener('DOMContentLoaded', function() {{
-                    initializeTheme();
                     loadCurrentFolder();
                     loadDownloadedFiles();
                     updateDownloads();
@@ -3186,12 +2782,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                     if (isVideoFile) {{
                                         icon = '🎥';
                                         clickHandler = `onclick="playVideo('${{file.name}}')"`;
-                                        // Format video duration if available
-                                        if (file.original.duration) {{
-                                            length = formatDuration(file.original.duration);
-                                        }} else {{
-                                            length = '—';
-                                        }}
+                                        length = '—';
                                     }} else if (isPartialFile) {{
                                         icon = '⚠️';
                                         rowClass = 'partial-file';
@@ -3880,60 +3471,10 @@ class QuikvidHandler(BaseHTTPRequestHandler):
         """Override to customize log messages."""
         print(f" [API] {format % args}")
 
-def auto_retry_incomplete_downloads(handler_class):
-    """Automatically retry incomplete downloads from URL tracker."""
-    tracker = get_tracker()
-    incomplete = tracker.get_incomplete_urls()
-    
-    if incomplete:
-        print(f" [+] Found {len(incomplete)} incomplete downloads to retry")
-        
-        for url_track_id, url_data in incomplete:
-            try:
-                print(f" [+] Auto-retrying: {url_data['title']}")
-                
-                # Mark as attempting
-                tracker.mark_attempting(url_track_id)
-                
-                # Create a new download
-                download_id = str(uuid.uuid4())
-                progress = DownloadProgress(download_id, url_data['url'], url_data['title'])
-                progress.url_track_id = url_track_id
-                progress.retry_count = url_data.get('attempts', 0)
-                
-                with download_lock:
-                    active_downloads[download_id] = progress
-                    save_active_downloads()
-                
-                # Create a dummy handler instance for download
-                class DummyRequest:
-                    def makefile(self, *args):
-                        return None
-                
-                handler = handler_class(DummyRequest(), ('127.0.0.1', 0), None)
-                
-                # Start download in background thread
-                download_thread = threading.Thread(
-                    target=handler.download_video_with_progress,
-                    args=(progress, True)  # Always open folder for auto-retry
-                )
-                download_thread.daemon = True
-                download_thread.start()
-                
-                # Small delay between retries
-                time.sleep(2)
-                
-            except Exception as e:
-                print(f" [!] Error auto-retrying {url_data['title']}: {e}")
-                tracker.mark_failed(url_track_id, str(e))
-
 def start_server(port=8080):
     """Start the enhanced Quikvid-DL web server."""
     server_address = ('localhost', port)
     httpd = HTTPServer(server_address, QuikvidHandler)
-    
-    # Initialize URL tracker
-    init_tracker(os.path.expanduser("~/Applications/VidSnatch/.logs/url_tracker.json"))
     
     # Load interrupted downloads from previous session
     load_active_downloads()
@@ -3948,15 +3489,6 @@ def start_server(port=8080):
     print(f" [+] Chrome extension ready for enhanced downloads")
     print(f" [+] Logs saved to .logs/server.log (circular buffer: 15MB total)")
     print(f" [+] Press Ctrl+C to stop the server")
-    
-    # Auto-retry incomplete downloads after a short delay
-    def delayed_auto_retry():
-        time.sleep(5)  # Wait 5 seconds for server to fully start
-        auto_retry_incomplete_downloads(QuikvidHandler)
-    
-    retry_thread = threading.Thread(target=delayed_auto_retry)
-    retry_thread.daemon = True
-    retry_thread.start()
     
     try:
         httpd.serve_forever()
