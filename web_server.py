@@ -567,6 +567,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             self.handle_open_file_request()
         elif parsed_path.path.startswith('/stream-video/'):
             self.handle_stream_video_request()
+        elif parsed_path.path.startswith('/find-failed-download-for-file/'):
+            filename = parsed_path.path.split('/')[-1]
+            self.handle_find_failed_download_request(filename)
         elif parsed_path.path == '/':
             self.send_html_response(self.get_web_interface())
         else:

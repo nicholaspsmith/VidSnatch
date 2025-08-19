@@ -74,12 +74,18 @@ class VidSnatchInstaller:
         desc_label = ttk.Label(desc_frame, text=desc_text, justify=tk.LEFT, wraplength=500)
         desc_label.grid(row=0, column=0, sticky='w')
         
-        # Status frame
-        status_frame = ttk.LabelFrame(main_frame, text="Installation Status", padding="10")
-        status_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 20))
+        # Status frame - create centered frame to match description width
+        status_outer_frame = ttk.Frame(main_frame)
+        status_outer_frame.grid(row=2, column=0, columnspan=2, pady=(0, 20))
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        status_outer_frame.columnconfigure(0, weight=1)
+        
+        status_frame = ttk.LabelFrame(status_outer_frame, text="Installation Status", padding="10")
+        status_frame.grid(row=0, column=0)
         
         self.status_label = ttk.Label(status_frame, text="Checking installation...", 
-                                     font=("Helvetica", 12))
+                                     font=("Helvetica", 12), wraplength=480)
         self.status_label.grid(row=0, column=0)
         
         # Buttons frame
@@ -145,9 +151,9 @@ class VidSnatchInstaller:
                                      command=self.setup_chrome_extension, style='Large.TButton')
         extension_button.grid(row=1, column=0, pady=(0, 5))
         
-        # Close button
+        # Close button - add bottom padding for better visual balance
         close_button = ttk.Button(main_frame, text="Close", command=self.root.quit, width=15)
-        close_button.grid(row=7, column=0, columnspan=2, pady=(10, 0))
+        close_button.grid(row=7, column=0, columnspan=2, pady=(20, 20))
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
