@@ -445,7 +445,7 @@ class VidSnatchInstaller:
         
         # Copy Python server files from current directory
         self.log_output("🐍 Installing Python server...")
-        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py']
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py']
         for file in server_files:
             src_path = os.path.join(self.current_dir, file)
             if os.path.exists(src_path):
@@ -529,31 +529,8 @@ class VidSnatchInstaller:
         launcher_content = f'''#!/bin/bash
 cd "{self.install_dir}"
 source venv/bin/activate
-python3 -c "
-import threading
-import time
-import subprocess
-import os
-import sys
-
-def start_server():
-    os.chdir('{self.install_dir}')
-    subprocess.run([sys.executable, 'web_server.py'])
-
-# Start server in background
-server_thread = threading.Thread(target=start_server, daemon=True)
-server_thread.start()
-
-print('VidSnatch server started in background')
-print('Access at http://localhost:8080')
-print('Press Ctrl+C to stop')
-
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print('Stopping VidSnatch server...')
-"'''
+python3 menubar_app.py
+'''
         
         with open(launcher_script, 'w') as f:
             f.write(launcher_content)
@@ -728,7 +705,7 @@ except Exception as e:
         
         # Copy Python server files from current directory
         print("🐍 Installing Python server...")
-        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py']
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py']
         for file in server_files:
             src_path = os.path.join(self.current_dir, file)
             if os.path.exists(src_path):
@@ -825,31 +802,8 @@ except Exception as e:
         launcher_content = f'''#!/bin/bash
 cd "{self.install_dir}"
 source venv/bin/activate
-python3 -c "
-import threading
-import time
-import subprocess
-import os
-import sys
-
-def start_server():
-    os.chdir('{self.install_dir}')
-    subprocess.run([sys.executable, 'web_server.py'])
-
-# Start server in background
-server_thread = threading.Thread(target=start_server, daemon=True)
-server_thread.start()
-
-print('VidSnatch server started in background')
-print('Access at http://localhost:8080')
-print('Press Ctrl+C to stop')
-
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print('Stopping VidSnatch server...')
-"'''
+python3 menubar_app.py
+'''
         
         with open(launcher_script, 'w') as f:
             f.write(launcher_content)
