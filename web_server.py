@@ -3410,7 +3410,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             /xhamster\\.com\\/videos/i,
                             /redtube\\.com\\/\\d+/i,
                             /tnaflix\\.com\\/.*\\/video/i,
-                            /\/watch|\/video|\/v[\\?\\/]|\\/(p|reel)\\//i
+                            /\\/watch|\\/video|\\/v[\\?\\/]|\\/(p|reel)\\//i
                         ];
                         
                         for (const item of historyItems) {{
@@ -4253,7 +4253,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             
                             for (const item of sortedItems) {{
                                 // Check if URL contains video-related indicators
-                                const isVideoUrl = /\\/(watch|video|v)[\\/\\?]|youtube\\.com|vimeo\\.com|dailymotion|tiktok|instagram|facebook\\.com\\/.*\\/videos|twitter\\.com\\/.*\\/status/i.test(item.url);
+                                const isVideoUrl = /(watch|video|v)[\\/?]|youtube\\.com|vimeo\\.com|dailymotion|tiktok|instagram|facebook\\.com\\/.*\\/videos|twitter\\.com\\/.*\\/status/i.test(item.url);
                                 
                                 let score = 0;
                                 let strategy = '';
@@ -4840,23 +4840,29 @@ The web interface is limited by browser security - only extensions can access hi
                         return;
                     }}
                     
-                    const suggestionsHtml = suggestions.map(suggestion => `
-                        <div class="suggestion-item">
-                            <div class="suggestion-info">
-                                <div class="suggestion-title">${{suggestion.title}}</div>
-                                <div class="suggestion-url">${{suggestion.url}}</div>
-                                <div class="suggestion-meta">Visited ${{suggestion.visitCount}} times</div>
+                    const suggestionsHtml = suggestions.map(suggestion => {{
+                        // Escape single quotes for onclick attributes
+                        const escapedUrl = suggestion.url.replace(/'/g, "\\'");
+                        const escapedTitle = suggestion.title.replace(/'/g, "\\'");
+                        
+                        return `
+                            <div class="suggestion-item">
+                                <div class="suggestion-info">
+                                    <div class="suggestion-title">${{suggestion.title}}</div>
+                                    <div class="suggestion-url">${{suggestion.url}}</div>
+                                    <div class="suggestion-meta">Visited ${{suggestion.visitCount}} times</div>
+                                </div>
+                                <div class="suggestion-actions">
+                                    <button class="suggestion-btn download" onclick="downloadSuggestion('${{escapedUrl}}', '${{escapedTitle}}')">
+                                        Download
+                                    </button>
+                                    <button class="suggestion-btn delete" onclick="removeSuggestion('${{escapedUrl}}')">
+                                        Remove
+                                    </button>
+                                </div>
                             </div>
-                            <div class="suggestion-actions">
-                                <button class="suggestion-btn download" onclick="downloadSuggestion('${{suggestion.url.replace(/'/g, '\\'')}}}', '${{suggestion.title.replace(/'/g, '\\'')}}')">
-                                    Download
-                                </button>
-                                <button class="suggestion-btn delete" onclick="removeSuggestion('${{suggestion.url.replace(/'/g, '\\'')}}}')">
-                                    Remove
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
+                        `;
+                    }}).join('');
                     
                     suggestedDownloads.innerHTML = suggestionsHtml;
                 }}
