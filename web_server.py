@@ -3341,14 +3341,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         </div>
                     </div>
                     
-                    <!-- Uninstall Section -->
-                    <div class="card uninstall-section" style="grid-column: 1 / -1;">
-                        <h3 style="color: var(--uninstall-text-color);">🗑️ Uninstall VidSnatch</h3>
-                        <p style="margin-bottom: 15px; color: var(--text-color);">
-                            Need to remove VidSnatch completely? Click below to open the uninstaller.
-                        </p>
-                        <button class="uninstall-link-btn" onclick="openUninstaller()">Open Uninstaller</button>
-                    </div>
                 </div>
             </div>
             
@@ -3923,7 +3915,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             filteredFilesData = [...filesData];
                             
                             // Apply current sort (default is date descending - newest first)
-                            sortFiles(currentSort.column);
+                            // Don't use sortFiles() as it toggles - apply sort directly
+                            filesData.sort((a, b) => {{
+                                const aVal = a.timestamp;
+                                const bVal = b.timestamp;
+                                return currentSort.order === 'asc' ? aVal - bVal : bVal - aVal;
+                            }});
+                            renderFilesTable();
                         }} else {{
                             filesData = [];
                             filteredFilesData = [];

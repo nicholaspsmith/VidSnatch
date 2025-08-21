@@ -21,9 +21,50 @@ except ImportError:
 
 class VidSnatchMenuBar:
     def __init__(self):
+        # Kill any existing instances first
+        self.kill_existing_instances()
+        
         self.server_process = None
         self.server_running = False
         self.install_dir = os.path.expanduser("~/Applications/VidSnatch")
+        
+    def kill_existing_instances(self):
+        """Kill any existing VidSnatch menubar app instances to prevent duplicates"""
+        try:
+            import psutil
+        except ImportError:
+            # Install psutil if not available
+            subprocess.run([sys.executable, "-m", "pip", "install", "psutil"], capture_output=True)
+            import psutil
+        
+        current_pid = os.getpid()
+        killed_count = 0
+        
+        try:
+            # Find all Python processes running menubar_app.py
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if proc.info['pid'] == current_pid:
+                        continue  # Skip current process
+                    
+                    if (proc.info['name'] and 'python' in proc.info['name'].lower() and 
+                        proc.info['cmdline'] and any('menubar_app.py' in arg for arg in proc.info['cmdline'])):
+                        
+                        print(f"Killing existing VidSnatch menubar instance (PID: {proc.info['pid']})")
+                        proc.kill()
+                        killed_count += 1
+                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    # Process may have already died or we don't have permission
+                    continue
+            
+            if killed_count > 0:
+                print(f"Killed {killed_count} existing VidSnatch menubar instance(s)")
+                # Brief delay to let processes fully terminate
+                time.sleep(0.5)
+                
+        except Exception as e:
+            print(f"Error checking for existing instances: {e}")
         
     def create_icon(self):
         """Create an icon for the menu bar using the extension icon"""
