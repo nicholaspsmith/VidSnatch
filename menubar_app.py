@@ -46,10 +46,10 @@ class VidSnatchMenuBar:
                         if info:
                             info['CFBundleName'] = 'VidSnatch'
                             info['CFBundleDisplayName'] = 'VidSnatch'
-                except:
-                    pass
-        except:
-            pass
+                except Exception as e:
+                    print(f"Warning: Could not set application bundle info: {e}")
+        except Exception as e:
+            print(f"Warning: Could not set process title: {e}")
         
         # Kill any existing instances first
         self.kill_existing_instances()
@@ -199,8 +199,8 @@ class VidSnatchMenuBar:
                 try:
                     requests.post("http://localhost:8080/stop-server", timeout=2)
                     time.sleep(1)  # Give server time to shutdown gracefully
-                except:
-                    pass  # Server might already be shutting down
+                except Exception as e:
+                    print(f"Note: Could not send stop request to server (may already be stopped): {e}")
                 
                 # Kill the process and all its children
                 import signal
@@ -209,8 +209,9 @@ class VidSnatchMenuBar:
                     # Kill process group (parent and all children)
                     try:
                         os.killpg(os.getpgid(self.server_process.pid), signal.SIGTERM)
-                    except:
+                    except Exception as e:
                         # Fallback to just killing the main process
+                        print(f"Warning: Could not kill process group, trying direct termination: {e}")
                         self.server_process.terminate()
                     
                     # Wait for process to end
@@ -220,7 +221,8 @@ class VidSnatchMenuBar:
                         # Force kill if still running
                         try:
                             os.killpg(os.getpgid(self.server_process.pid), signal.SIGKILL)
-                        except:
+                        except Exception as e:
+                            print(f"Warning: SIGTERM failed, forcing SIGKILL: {e}")
                             self.server_process.kill()
                 
                 self.server_running = False
@@ -242,7 +244,8 @@ class VidSnatchMenuBar:
         try:
             response = requests.get("http://localhost:8080", timeout=2)
             return response.status_code == 200
-        except:
+        except Exception as e:
+            # Don't log this one as it happens frequently during normal operation
             return False
     
     def toggle_server(self, icon, item):
@@ -257,8 +260,8 @@ class VidSnatchMenuBar:
             # Also try to kill any orphaned web_server.py processes
             try:
                 subprocess.run(["pkill", "-f", "web_server.py"], capture_output=True)
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: Could not kill orphaned web_server.py processes: {e}")
             
             # Wait a moment and verify server is actually stopped
             time.sleep(0.5)
@@ -413,8 +416,8 @@ class VidSnatchMenuBar:
                 if actual_running != self.server_running:
                     self.server_running = actual_running
                     self.update_menu(icon)
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: Error in periodic status check: {e}")
     
     def run(self):
         """Run the menu bar application"""

@@ -410,7 +410,8 @@ def find_matching_active_download(filename):
                 active_downloads_data = json.load(f)
         else:
             active_downloads_data = {}
-    except:
+    except Exception as e:
+        print(f"Warning: Could not load active downloads data: {e}")
         active_downloads_data = {}
     
     # Also check currently active downloads in memory
@@ -496,7 +497,7 @@ def get_video_duration(file_path):
         if result.returncode == 0 and result.stdout.strip():
             duration = float(result.stdout.strip())
             return round(duration)
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError, FileNotFoundError) as e:
         pass
     
     try:
@@ -519,7 +520,8 @@ def get_video_duration(file_path):
             estimated_minutes = file_size / (1024 * 1024)  # Rough estimate
             if estimated_minutes < 300:  # Cap at 5 hours to avoid crazy estimates
                 return round(estimated_minutes * 60)
-    except:
+    except Exception as e:
+        # Silently fail for duration parsing as it's non-critical
         pass
     
     return None
@@ -666,14 +668,25 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             filename = parsed_path.path.split('/')[-1]
             self.handle_find_failed_download_request(filename)
         elif parsed_path.path == '/favicon.ico':
-            # Return a simple favicon to prevent 404 errors
-            self.send_response(200)
-            self.send_header('Content-Type', 'image/x-icon')
-            self.send_header('Cache-Control', 'public, max-age=3600')
-            self.end_headers()
-            # Simple 16x16 favicon data (1-bit black dot)
-            favicon_data = b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x01\x00(\x00\x00\x00\x16\x00\x00\x00(\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-            self.wfile.write(favicon_data)
+            # Serve the new favicon.ico
+            try:
+                favicon_path = os.path.join(os.getcwd(), "static", "favicons", "favicon.ico")
+                if os.path.exists(favicon_path):
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/x-icon')
+                    self.send_header('Cache-Control', 'public, max-age=3600')
+                    self.end_headers()
+                    
+                    with open(favicon_path, 'rb') as f:
+                        self.wfile.write(f.read())
+                else:
+                    self.send_error(404, 'Favicon not found')
+            except Exception as e:
+                print(f"Error serving favicon: {e}")
+                self.send_error(500, 'Internal server error')
+        elif parsed_path.path.startswith('/static/'):
+            # Serve static files (favicons, etc.)
+            self.serve_static_file(parsed_path.path)
         elif parsed_path.path == '/':
             self.send_html_response(self.get_web_interface())
         else:
@@ -1299,6 +1312,50 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 'message': f'Failed to browse downloads: {str(e)}'
             })
     
+    def serve_static_file(self, path):
+        """Serve static files (favicons, etc.)."""
+        try:
+            # Security: prevent directory traversal
+            if '..' in path or path.startswith('//'):
+                self.send_error(403, 'Access denied')
+                return
+            
+            # Map URL path to file path - use current working directory for static files
+            static_root = os.path.join(os.getcwd(), 'static')
+            file_path = os.path.join(static_root, path.lstrip('/static/'))
+            
+            # Ensure the file is within the static directory
+            if not os.path.abspath(file_path).startswith(os.path.abspath(static_root)):
+                self.send_error(403, 'Access denied')
+                return
+            
+            if not os.path.exists(file_path):
+                self.send_error(404, 'File not found')
+                return
+            
+            # Determine content type
+            content_type = 'application/octet-stream'
+            if file_path.endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.endswith('.ico'):
+                content_type = 'image/x-icon'
+            elif file_path.endswith('.webmanifest'):
+                content_type = 'application/manifest+json'
+            elif file_path.endswith('.svg'):
+                content_type = 'image/svg+xml'
+            
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Cache-Control', 'public, max-age=3600')
+            self.end_headers()
+            
+            with open(file_path, 'rb') as f:
+                self.wfile.write(f.read())
+                
+        except Exception as e:
+            print(f"Error serving static file {path}: {e}")
+            self.send_error(500, 'Internal server error')
+    
     def handle_open_file_request(self):
         """Handle requests to open a specific file."""
         try:
@@ -1444,8 +1501,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             print(f" [!] Error streaming video: {e}")
             try:
                 self.send_error(500, f'Error streaming video: {str(e)}')
-            except:
-                pass  # Connection might be closed
+            except Exception as send_error:
+                print(f"Warning: Could not send error response (connection likely closed): {send_error}")
     
     def handle_stop_server_request(self):
         """Handle server stop requests."""
@@ -1477,8 +1534,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 # Send termination signal to entire process group
                 try:
                     os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Warning: Could not kill process group during shutdown: {e}")
                 
                 # Exit the process
                 sys.exit(0)
@@ -1504,8 +1561,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         try:
                             os.remove(file_path)
                             print(f" [+] Cleaned up partial file: {filename}")
-                        except:
-                            pass
+                        except Exception as e:
+                            print(f"Warning: Could not remove partial file {filename}: {e}")
         except Exception as e:
             print(f" [!] Error cleaning up files: {e}")
     
@@ -2210,6 +2267,12 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>VidSnatch Control Panel</title>
+            <!-- Favicons -->
+            <link rel="apple-touch-icon" sizes="180x180" href="/static/favicons/apple-touch-icon.png">
+            <link rel="icon" type="image/png" sizes="32x32" href="/static/favicons/favicon-32x32.png">
+            <link rel="icon" type="image/png" sizes="16x16" href="/static/favicons/favicon-16x16.png">
+            <link rel="manifest" href="/static/favicons/site.webmanifest">
+            <link rel="shortcut icon" href="/favicon.ico">
             <style>
                 :root {{
                     /* Light mode colors */
@@ -3978,9 +4041,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                 bVal = b.sizeBytes;
                                 break;
                             case 'length':
-                                // Parse duration from original.duration or use 0 if not available
-                                aVal = a.original && a.original.duration ? parseDurationToSeconds(a.original.duration) : 0;
-                                bVal = b.original && b.original.duration ? parseDurationToSeconds(b.original.duration) : 0;
+                                // Parse duration from duration or use 0 if not available
+                                aVal = a.duration ? parseDurationToSeconds(a.duration) : 0;
+                                bVal = b.duration ? parseDurationToSeconds(b.duration) : 0;
                                 break;
                             case 'tags':
                                 aVal = getFileTags(a.name).join(' ').toLowerCase();
@@ -4053,8 +4116,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                         icon = '🎥';
                                         clickHandler = `onclick="playVideo('${{escapeFilename(file.name)}}')"`;
                                         // Format video duration if available
-                                        if (file.original.duration) {{
-                                            length = formatDuration(file.original.duration);
+                                        if (file.duration) {{
+                                            length = formatDuration(file.duration);
                                         }} else {{
                                             length = '—';
                                         }}
@@ -5061,6 +5124,9 @@ The web interface is limited by browser security - only extensions can access hi
                         const videoUrl = `/stream-video/${{encodeURIComponent(filename)}}`;
                         videoSource.src = videoUrl;
                         videoPlayer.load(); // Reload video element with new source
+                        
+                        // Set default volume to 25%
+                        videoPlayer.volume = 0.25;
                         
                         // Update video info
                         videoTitle.textContent = filename;
