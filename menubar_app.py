@@ -6,21 +6,51 @@ import subprocess
 import os
 import sys
 import signal
+import platform
 from pathlib import Path
 
 try:
     import pystray
     from PIL import Image, ImageDraw
     import requests
+    import setproctitle
 except ImportError:
     print("Installing required packages...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "pystray", "pillow", "requests"])
+    subprocess.run([sys.executable, "-m", "pip", "install", "pystray", "pillow", "requests", "setproctitle"])
     import pystray
     from PIL import Image, ImageDraw
     import requests
+    import setproctitle
+
+# PyObjC is usually pre-installed on macOS, but import it conditionally
+try:
+    from AppKit import NSApplication, NSImage
+    from Foundation import NSBundle
+    PYOBJC_AVAILABLE = True
+except ImportError:
+    PYOBJC_AVAILABLE = False
 
 class VidSnatchMenuBar:
     def __init__(self):
+        # Set process name to "vidsnatch"
+        try:
+            setproctitle.setproctitle("vidsnatch")
+            # Also try to set the process name for Activity Monitor
+            if platform.system() == "Darwin" and PYOBJC_AVAILABLE:
+                try:
+                    app = NSApplication.sharedApplication()
+                    # Set the application name
+                    bundle = NSBundle.mainBundle()
+                    if bundle:
+                        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+                        if info:
+                            info['CFBundleName'] = 'VidSnatch'
+                            info['CFBundleDisplayName'] = 'VidSnatch'
+                except:
+                    pass
+        except:
+            pass
+        
         # Kill any existing instances first
         self.kill_existing_instances()
         
@@ -28,6 +58,28 @@ class VidSnatchMenuBar:
         self.server_running = False
         self.install_dir = os.path.expanduser("~/Applications/VidSnatch")
         
+        # Set up dock icon if we're on macOS
+        self.setup_dock_icon()
+        
+    def setup_dock_icon(self):
+        """Set up custom dock icon on macOS"""
+        try:
+            import platform
+            if platform.system() == "Darwin" and PYOBJC_AVAILABLE:  # macOS
+                # Try to set the dock icon using PyObjC
+                icon_path = os.path.join(self.install_dir, "chrome-extension", "icons", "icon128.png")
+                if os.path.exists(icon_path):
+                    try:
+                        app = NSApplication.sharedApplication()
+                        image = NSImage.alloc().initWithContentsOfFile_(icon_path)
+                        if image:
+                            app.setApplicationIconImage_(image)
+                            print(f"Set dock icon to: {icon_path}")
+                    except Exception as e:
+                        print(f"Failed to set dock icon: {e}")
+        except Exception as e:
+            print(f"Could not set dock icon: {e}")
+    
     def kill_existing_instances(self):
         """Kill any existing VidSnatch menubar app instances to prevent duplicates"""
         try:
@@ -47,7 +99,7 @@ class VidSnatchMenuBar:
                     if proc.info['pid'] == current_pid:
                         continue  # Skip current process
                     
-                    if (proc.info['name'] and 'python' in proc.info['name'].lower() and 
+                    if (proc.info['name'] and ('python' in proc.info['name'].lower() or proc.info['name'] == 'vidsnatch') and 
                         proc.info['cmdline'] and any('menubar_app.py' in arg for arg in proc.info['cmdline'])):
                         
                         print(f"Killing existing VidSnatch menubar instance (PID: {proc.info['pid']})")
@@ -120,10 +172,21 @@ class VidSnatchMenuBar:
                 self.server_process = subprocess.Popen(
                     [python_path, server_script],
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
+                    preexec_fn=os.setsid  # Create new process group
                 )
-                self.server_running = True
-                return True
+                
+                # Wait a moment and verify server actually started
+                time.sleep(2)
+                if self.check_server_status():
+                    self.server_running = True
+                    return True
+                else:
+                    # Server failed to start, clean up
+                    if self.server_process and self.server_process.poll() is None:
+                        self.server_process.terminate()
+                    self.server_process = None
+                    return False
             except Exception as e:
                 print(f"Error starting server: {e}")
                 return False
@@ -132,17 +195,47 @@ class VidSnatchMenuBar:
         """Stop the VidSnatch server"""
         if self.server_process and self.server_running:
             try:
-                self.server_process.terminate()
-                self.server_process.wait(timeout=5)
-                self.server_running = False
-                return True
-            except:
+                # First try to stop via HTTP request
                 try:
-                    self.server_process.kill()
-                    self.server_running = False
-                    return True
+                    requests.post("http://localhost:8080/stop-server", timeout=2)
+                    time.sleep(1)  # Give server time to shutdown gracefully
                 except:
-                    return False
+                    pass  # Server might already be shutting down
+                
+                # Kill the process and all its children
+                import signal
+                import os
+                if self.server_process.poll() is None:  # Process still running
+                    # Kill process group (parent and all children)
+                    try:
+                        os.killpg(os.getpgid(self.server_process.pid), signal.SIGTERM)
+                    except:
+                        # Fallback to just killing the main process
+                        self.server_process.terminate()
+                    
+                    # Wait for process to end
+                    try:
+                        self.server_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if still running
+                        try:
+                            os.killpg(os.getpgid(self.server_process.pid), signal.SIGKILL)
+                        except:
+                            self.server_process.kill()
+                
+                self.server_running = False
+                self.server_process = None
+                return True
+            except Exception as e:
+                print(f"Error stopping server: {e}")
+                self.server_running = False
+                self.server_process = None
+                return False
+        elif self.server_running:
+            # Server is marked as running but no process - update state
+            self.server_running = False
+            self.server_process = None
+        return True
     
     def check_server_status(self):
         """Check if server is responding"""
@@ -154,17 +247,43 @@ class VidSnatchMenuBar:
     
     def toggle_server(self, icon, item):
         """Toggle server on/off"""
-        if self.server_running:
-            if self.stop_server():
+        # Check actual server status first
+        actual_running = self.check_server_status()
+        
+        if actual_running or self.server_running:
+            # Try to stop the server
+            success = self.stop_server()
+            
+            # Also try to kill any orphaned web_server.py processes
+            try:
+                subprocess.run(["pkill", "-f", "web_server.py"], capture_output=True)
+            except:
+                pass
+            
+            # Wait a moment and verify server is actually stopped
+            time.sleep(0.5)
+            actual_stopped = not self.check_server_status()
+            
+            # Update internal state
+            self.server_running = False
+            
+            # Update menu immediately
+            self.update_menu(icon)
+            
+            if success and actual_stopped:
                 icon.notify("VidSnatch server stopped")
             else:
                 icon.notify("Failed to stop server")
         else:
             if self.start_server():
+                self.server_running = True
+                # Update menu immediately after starting
+                self.update_menu(icon)
                 icon.notify("VidSnatch server started - http://localhost:8080")
             else:
+                # Update menu even if failed to start
+                self.update_menu(icon)
                 icon.notify("Failed to start server")
-        self.update_menu(icon)
     
     def open_web_interface(self, icon, item):
         """Open the web interface in browser with smart tab handling"""
@@ -277,11 +396,33 @@ class VidSnatchMenuBar:
             pystray.MenuItem("Quit VidSnatch", self.quit_app)
         )
         icon.menu = menu
+        
+        # Force icon to update immediately
+        try:
+            icon.update_menu()
+        except AttributeError:
+            # update_menu method might not exist in all versions of pystray
+            pass
+    
+    def periodic_status_check(self, icon):
+        """Periodically check server status and update menu"""
+        while True:
+            time.sleep(5)  # Check every 5 seconds
+            try:
+                actual_running = self.check_server_status()
+                if actual_running != self.server_running:
+                    self.server_running = actual_running
+                    self.update_menu(icon)
+            except:
+                pass
     
     def run(self):
         """Run the menu bar application"""
-        # Auto-start server
-        self.start_server()
+        # Check if server is already running, if not, start it
+        if not self.check_server_status():
+            self.start_server()
+        else:
+            self.server_running = True
         
         icon = pystray.Icon(
             "VidSnatch",
@@ -290,6 +431,12 @@ class VidSnatchMenuBar:
         )
         
         self.update_menu(icon)
+        
+        # Start periodic status check in background
+        import threading
+        status_thread = threading.Thread(target=self.periodic_status_check, args=(icon,))
+        status_thread.daemon = True
+        status_thread.start()
         
         # Handle clean shutdown
         def signal_handler(signum, frame):

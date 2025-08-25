@@ -665,6 +665,15 @@ class QuikvidHandler(BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/find-failed-download-for-file/'):
             filename = parsed_path.path.split('/')[-1]
             self.handle_find_failed_download_request(filename)
+        elif parsed_path.path == '/favicon.ico':
+            # Return a simple favicon to prevent 404 errors
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/x-icon')
+            self.send_header('Cache-Control', 'public, max-age=3600')
+            self.end_headers()
+            # Simple 16x16 favicon data (1-bit black dot)
+            favicon_data = b'\x00\x00\x01\x00\x01\x00\x10\x10\x00\x00\x01\x00\x01\x00(\x00\x00\x00\x16\x00\x00\x00(\x00\x00\x00\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+            self.wfile.write(favicon_data)
         elif parsed_path.path == '/':
             self.send_html_response(self.get_web_interface())
         else:
@@ -685,6 +694,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/delete/'):
             download_id = parsed_path.path.split('/')[-1]
             self.handle_delete_request(download_id)
+        elif parsed_path.path.startswith('/clear/'):
+            download_id = parsed_path.path.split('/')[-1]
+            self.handle_clear_request(download_id)
         elif parsed_path.path.startswith('/delete-partial-file/'):
             filename = parsed_path.path.split('/')[-1]
             self.handle_delete_partial_file_request(filename)
@@ -851,6 +863,54 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             
         except Exception as e:
             print(f" [!] Error deleting download: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, status=500)
+
+    def handle_clear_request(self, download_id):
+        """Handle clear request for completed downloads (removes from list without deleting files)."""
+        try:
+            download_title = "Unknown"
+            
+            # Check active downloads first
+            if download_id in active_downloads:
+                progress = active_downloads[download_id]
+                download_title = progress.title
+                
+                # Only allow clearing completed downloads
+                if progress.status != 'completed':
+                    self.send_json_response({
+                        'success': False,
+                        'error': 'Can only clear completed downloads'
+                    }, status=400)
+                    return
+                
+                with download_lock:
+                    del active_downloads[download_id]
+                    save_active_downloads()
+                    
+            # Check failed downloads  
+            elif download_id in failed_downloads:
+                failed_download = failed_downloads[download_id]
+                download_title = failed_download['title']
+                
+                # Remove from failed downloads store
+                remove_failed_download(download_id)
+            else:
+                self.send_json_response({
+                    'success': False,
+                    'error': 'Download not found'
+                }, status=404)
+                return
+            
+            print(f" [+] Cleared download from list: {download_title}")
+                
+            self.send_json_response({
+                'success': True,
+                'message': f'Download cleared: {download_title}',
+                'downloadId': download_id
+            })
+            
+        except Exception as e:
+            print(f" [!] Error clearing download: {e}")
             self.send_json_response({'success': False, 'error': str(e)}, status=500)
 
     def handle_delete_partial_file_request(self, filename):
@@ -1044,8 +1104,17 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 'downloads': []
             }
             
+            # Track seen titles/URLs to prevent duplicates
+            seen_items = set()
+            
             # Add active downloads
             for download_id, progress in active_downloads.items():
+                # Create unique key based on title and URL
+                item_key = (progress.title, progress.url)
+                if item_key in seen_items:
+                    continue
+                seen_items.add(item_key)
+                
                 download_info = {
                     'downloadId': download_id,
                     'title': progress.title,
@@ -1065,9 +1134,14 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }
                 debug_info['downloads'].append(download_info)
             
-            # Add failed downloads that aren't currently active
+            # Add failed downloads that aren't currently active and not duplicates
             for download_id, failed_download in failed_downloads.items():
                 if download_id not in active_downloads:
+                    # Create unique key based on title and URL
+                    item_key = (failed_download['title'], failed_download['url'])
+                    if item_key in seen_items:
+                        continue
+                    seen_items.add(item_key)
                     download_info = {
                         'downloadId': download_id,
                         'title': failed_download['title'],
@@ -1080,9 +1154,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         'cancelled': False,
                         'has_thread': False,
                         'thread_alive': False,
-                        'start_time': failed_download['failed_at'],
+                        'start_time': failed_download.get('failed_at', time.time()),
                         'runtime_seconds': 0,
-                        'retry_count': failed_download['retry_count'],
+                        'retry_count': failed_download.get('retry_count', 0),
                         'is_failed': True
                     }
                     debug_info['downloads'].append(download_info)
@@ -1148,10 +1222,32 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             files = []
             file_metadata = get_file_metadata()
             
+            # Get list of files currently being downloaded to exclude them
+            actively_downloading_files = set()
+            with download_lock:
+                for progress in active_downloads.values():
+                    if progress.status in ['preparing', 'downloading', 'processing']:
+                        # Try to extract filename from the progress object or URL
+                        if hasattr(progress, 'filename') and progress.filename:
+                            actively_downloading_files.add(progress.filename)
+                        elif hasattr(progress, 'title') and progress.title:
+                            # Create potential filename from title (common video extensions)
+                            for ext in ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v']:
+                                potential_filename = f"{progress.title}{ext}"
+                                actively_downloading_files.add(potential_filename)
+            
             try:
                 for item in sorted(os.listdir(folder_path)):
                     # Skip hidden files and system files
                     if item.startswith('.') or item.startswith('~'):
+                        continue
+                    
+                    # Skip files that are currently being downloaded
+                    if item in actively_downloading_files:
+                        continue
+                    
+                    # Skip partial download files (common partial extensions)
+                    if item.endswith(('.part', '.ytdl', '.temp', '.download', '.crdownload')):
                         continue
                         
                     item_path = os.path.join(folder_path, item)
@@ -1364,8 +1460,28 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             def shutdown_server():
                 time.sleep(1)  # Give time for response to be sent
                 print(" [+] Shutting down server...")
+                
+                # Cancel all active downloads
+                with download_lock:
+                    for download_id, progress in list(active_downloads.items()):
+                        if progress.status in ['preparing', 'downloading', 'processing']:
+                            progress.cancelled = True
+                            progress.status = 'cancelled'
+                    save_active_downloads()
+                
+                # Terminate all child processes
+                import signal
                 import os
-                os._exit(0)  # Force exit
+                import sys
+                
+                # Send termination signal to entire process group
+                try:
+                    os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
+                except:
+                    pass
+                
+                # Exit the process
+                sys.exit(0)
             
             shutdown_thread = threading.Thread(target=shutdown_server)
             shutdown_thread.daemon = True
@@ -1815,9 +1931,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f" [!] Error during auto-cleanup: {e}")
                 
-                # Open finder on macOS if requested
-                if open_folder and sys.platform == 'darwin':
-                    videoDownloader.open_finder(download_path)
+                # Open finder on macOS if requested - DISABLED
+                # if open_folder and sys.platform == 'darwin':
+                #     videoDownloader.open_finder(download_path)
             
         except (yt_dlp.DownloadError, AttributeError) as e:
             error_msg = str(e)
@@ -2155,6 +2271,29 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     border: 1px solid #555;
                 }}
                 
+                [data-theme="dark"] .download-title {{
+                    color: #e0e0e0;
+                }}
+                
+                [data-theme="dark"] .download-meta {{
+                    color: #b0b0b0;
+                }}
+                
+                [data-theme="dark"] .downloads-table {{
+                    background: var(--card-bg);
+                    color: var(--text-color);
+                }}
+                
+                [data-theme="dark"] .downloads-table th {{
+                    background: var(--table-header-bg);
+                    color: var(--text-color);
+                }}
+                
+                [data-theme="dark"] .downloads-table td {{
+                    color: var(--text-color);
+                    border-bottom: 1px solid var(--table-border);
+                }}
+                
                 [data-theme="dark"] .video-controls {{
                     background: rgba(45, 45, 45, 0.95);
                     backdrop-filter: blur(10px);
@@ -2193,20 +2332,19 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
+                    height: 60px;
                     margin-bottom: 30px;
                     background: var(--card-bg);
                     backdrop-filter: blur(10px);
                     border-radius: 15px;
-                    padding: 30px;
+                    padding: 0 30px;
                     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                    flex-wrap: wrap;
                     gap: 20px;
                 }}
                 
                 .header-left {{
                     display: flex;
-                    flex-direction: column;
-                    align-items: flex-start;
+                    align-items: center;
                 }}
                 
                 .theme-toggle {{
@@ -2279,8 +2417,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .logo {{
-                    font-size: 3rem;
-                    margin-bottom: 10px;
+                    font-size: 2rem;
                     background: linear-gradient(135deg, #3d4db7, #523a6f);
                     -webkit-background-clip: text;
                     -webkit-text-fill-color: transparent;
@@ -2288,12 +2425,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     font-weight: bold;
                 }}
                 
-                .tagline {{
-                    color: var(--text-color);
-                    opacity: 0.7;
-                    font-size: 1.2rem;
-                    margin-bottom: 20px;
-                }}
                 
                 .main-content {{
                     display: grid;
@@ -2444,6 +2575,57 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     margin-top: 15px;
                 }}
                 
+                .downloads-table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.9rem;
+                    background: var(--card-bg);
+                    color: var(--text-color);
+                    table-layout: fixed;
+                }}
+                
+                .downloads-table th {{
+                    text-align: left;
+                    padding: 8px 12px;
+                    border-bottom: 2px solid var(--table-border);
+                    font-weight: 600;
+                    color: var(--text-color);
+                    background: var(--table-header-bg);
+                }}
+                
+                .downloads-table td {{
+                    padding: 8px 12px;
+                    border-bottom: 1px solid var(--table-border);
+                    vertical-align: middle;
+                    color: var(--text-color);
+                }}
+                
+                .downloads-table tr:hover {{
+                    background: var(--row-hover-bg);
+                }}
+                
+                .download-title {{
+                    font-weight: 600;
+                    color: var(--text-color);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }}
+                
+                .download-status {{
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-size: 0.8rem;
+                }}
+                
+                .status-indicator {{
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                }}
+                
                 .download-item {{
                     display: flex;
                     align-items: center;
@@ -2458,13 +2640,16 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     flex: 1;
                 }}
                 
-                .download-title {{
-                    font-weight: 600;
-                    margin-bottom: 5px;
-                    color: #333;
+                .download-progress {{
+                    width: 60px;
+                    height: 4px;
+                    background: #e0e0e0;
+                    border-radius: 2px;
+                    overflow: hidden;
+                    display: inline-block;
                 }}
                 
-                .download-progress {{
+                .download-progress-full {{
                     width: 100%;
                     height: 6px;
                     background: #e0e0e0;
@@ -3026,48 +3211,55 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 /* Suggested Downloads Styles */
                 .suggested-downloads {{
-                    max-height: 300px;
+                    max-height: 200px;
                     overflow-y: auto;
+                    border: 1px solid var(--input-border);
+                    border-radius: 6px;
                 }}
                 
                 .suggestion-item {{
-                    display: flex;
+                    display: grid;
+                    grid-template-columns: 3fr 2fr 1fr 120px;
                     align-items: center;
-                    gap: 12px;
-                    padding: 12px;
-                    background: var(--input-bg);
-                    border: 1px solid var(--input-border);
-                    border-radius: 6px;
-                    margin-bottom: 8px;
-                    transition: all 0.2s ease;
+                    padding: 8px 12px;
+                    border-bottom: 1px solid var(--input-border);
+                    transition: background 0.2s ease;
+                    height: 40px;
+                    font-size: 0.85rem;
+                }}
+                
+                .suggestion-item:last-child {{
+                    border-bottom: none;
                 }}
                 
                 .suggestion-item:hover {{
-                    border-color: var(--btn-bg);
                     background: var(--table-hover-bg);
                 }}
                 
-                .suggestion-info {{
-                    flex: 1;
-                    min-width: 0;
-                }}
-                
                 .suggestion-title {{
-                    font-weight: 600;
+                    font-weight: 500;
                     color: var(--text-color);
-                    margin-bottom: 4px;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
+                    padding-right: 8px;
                 }}
                 
                 .suggestion-url {{
                     font-size: 0.8rem;
-                    color: var(--text-color);
-                    opacity: 0.7;
+                    color: var(--btn-bg);
+                    opacity: 0.8;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
+                    cursor: pointer;
+                    text-decoration: underline;
+                    padding-right: 8px;
+                }}
+                
+                .suggestion-url:hover {{
+                    opacity: 1;
+                    color: var(--btn-hover-bg);
                 }}
                 
                 .suggestion-meta {{
@@ -3080,16 +3272,19 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 .suggestion-actions {{
                     display: flex;
                     gap: 6px;
+                    align-items: center;
+                    justify-content: flex-end;
                 }}
                 
                 .suggestion-btn {{
-                    padding: 6px 12px;
-                    font-size: 0.8rem;
+                    padding: 4px 8px;
+                    font-size: 0.75rem;
                     border: none;
                     border-radius: 4px;
                     cursor: pointer;
                     transition: all 0.2s ease;
                     font-weight: 500;
+                    white-space: nowrap;
                 }}
                 
                 .suggestion-btn.download {{
@@ -3099,7 +3294,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 .suggestion-btn.download:hover {{
                     background: var(--btn-hover-bg);
-                    transform: translateY(-1px);
                 }}
                 
                 .suggestion-btn.delete {{
@@ -3112,70 +3306,130 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     transform: translateY(-1px);
                 }}
                 
-                /* Tags System Styles */
-                .tags-container {{
-                    min-height: 24px;
-                    position: relative;
+                /* Collapsible section styles */
+                .collapsible-header {{
+                    user-select: none;
                 }}
                 
-                .tags-display {{
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 4px;
-                    min-height: 20px;
-                    cursor: pointer;
-                    padding: 2px;
-                    border-radius: 4px;
-                    transition: background 0.2s ease;
-                }}
-                
-                .tags-display:hover {{
+                .collapsible-header:hover {{
                     background: var(--table-hover-bg);
+                    border-radius: 6px;
+                    padding: 8px;
+                    margin: -8px;
                 }}
                 
-                .tags-display.empty {{
+                /* Tags Input System Styles (RS Suite TagInput style) */
+                .tags-input-container {{
                     display: flex;
+                    flex-wrap: nowrap;
                     align-items: center;
-                    justify-content: center;
-                    color: var(--secondary-text-color);
-                    font-size: 0.8rem;
-                    opacity: 0.5;
+                    gap: 4px;
+                    height: 32px;
+                    min-height: 32px;
+                    max-height: 32px;
+                    padding: 4px 8px;
+                    border: 1px solid var(--input-border);
+                    border-radius: 6px;
+                    background: var(--input-bg);
+                    cursor: text;
+                    transition: border-color 0.2s ease;
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                    scrollbar-width: thin;
+                    scrollbar-color: var(--border-color) transparent;
                 }}
                 
-                .tag-badge {{
+                .tags-input-container::-webkit-scrollbar {{
+                    height: 4px;
+                }}
+                
+                .tags-input-container::-webkit-scrollbar-track {{
+                    background: transparent;
+                }}
+                
+                .tags-input-container::-webkit-scrollbar-thumb {{
+                    background-color: var(--border-color);
+                    border-radius: 2px;
+                }}
+                
+                .tags-input-container:hover {{
+                    border-color: var(--btn-bg);
+                }}
+                
+                .tags-input-container:focus-within {{
+                    border-color: var(--btn-bg);
+                    box-shadow: 0 0 0 2px rgba(61, 77, 183, 0.1);
+                }}
+                
+                .tags-chips {{
+                    display: flex;
+                    flex-wrap: nowrap;
+                    gap: 4px;
+                    flex: 0 0 auto;
+                }}
+                
+                .tag-chip {{
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
                     background: var(--btn-bg);
                     color: white;
-                    padding: 2px 8px;
+                    padding: 2px 6px 2px 8px;
                     border-radius: 12px;
-                    font-size: 0.7rem;
+                    font-size: 0.75rem;
                     font-weight: 500;
+                    max-width: 200px;
+                    height: 22px;
                     white-space: nowrap;
-                    max-width: 80px;
+                    transition: all 0.2s ease;
+                    flex-shrink: 0;
+                    cursor: pointer;
+                }}
+                
+                .tag-chip span:first-child {{
                     overflow: hidden;
                     text-overflow: ellipsis;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
+                    pointer-events: none;
                 }}
                 
-                .tag-badge:hover {{
+                .tag-chip:hover {{
                     background: var(--btn-hover-bg);
-                    transform: scale(1.05);
+                    transform: scale(1.02);
                 }}
                 
-                .tags-input {{
-                    width: 100%;
-                    border: 1px solid var(--input-border);
-                    background: var(--input-bg);
-                    color: var(--text-color);
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-size: 0.8rem;
-                    transition: border-color 0.2s ease;
+                .tag-remove {{
+                    cursor: pointer;
+                    font-size: 14px;
+                    line-height: 1;
+                    color: rgba(255, 255, 255, 0.7);
+                    padding: 0 2px;
+                    border-radius: 50%;
+                    transition: all 0.2s ease;
+                    flex-shrink: 0;
+                    margin-left: auto;
                 }}
                 
-                .tags-input:focus {{
+                .tag-remove:hover {{
+                    background: rgba(255, 255, 255, 0.2);
+                    color: white;
+                }}
+                
+                .tags-input-field {{
+                    border: none;
                     outline: none;
-                    border-color: var(--btn-bg);
+                    background: transparent;
+                    color: var(--text-color);
+                    font-size: 0.8rem;
+                    padding: 4px 0;
+                    min-width: 80px;
+                    height: 22px;
+                    flex: 1 1 auto;
+                    overflow: hidden;
+                }}
+                
+                .tags-input-field::placeholder {{
+                    color: var(--secondary-text-color);
+                    opacity: 0.6;
                 }}
                 
                 /* Search Bar Styles */
@@ -3230,7 +3484,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 <div class="header">
                     <div class="header-left">
                         <div class="logo">🎬 VidSnatch</div>
-                        <div class="tagline">Download videos from 1000+ sites with ease</div>
                     </div>
                     <div class="theme-toggle">
                         <label class="toggle-switch">
@@ -3273,8 +3526,31 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     </div>
                 </div>
                 
+                <!-- File Explorer Card (Moved to top) -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3>🗂️ Downloaded Files</h3>
+                    <div class="search-bar-container">
+                        <input type="text" id="fileSearchBar" class="search-input" 
+                               placeholder="Search files by name, tags, or URL..." 
+                               oninput="filterFiles(this.value)">
+                        <div class="search-icon">🔍</div>
+                    </div>
+                    <div class="file-explorer" id="fileExplorer">
+                        <div class="loading-container">
+                            <div class="loading-spinner"></div>
+                            <div>Loading files...</div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Main Content Grid -->
                 <div class="main-content">
+                    <!-- Downloads Section (Hidden when no downloads) -->
+                    <div class="card downloads-section" id="downloadsSection">
+                        <h3>📥 Active Downloads</h3>
+                        <div class="downloads-list" id="downloadsList"></div>
+                    </div>
+                    
                     <!-- Server Control Card -->
                     <div class="card">
                         <h3>
@@ -3305,15 +3581,17 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         <button class="btn" onclick="refreshFiles()">🔄 Refresh Files</button>
                     </div>
                     
-                    <!-- Downloads Section (Hidden when no downloads) -->
-                    <div class="card downloads-section" id="downloadsSection">
-                        <h3>📥 Active Downloads</h3>
-                        <div class="downloads-list" id="downloadsList"></div>
-                    </div>
                     
-                    <!-- Suggested Downloads Card -->
-                    <div class="card" style="grid-column: 1 / -1;">
-                        <h3>💡 Suggested Downloads</h3>
+                </div>
+                
+                <!-- Suggested Downloads Card (Moved to Bottom, Collapsible) -->
+                <div class="card" style="grid-column: 1 / -1; margin-top: 20px;">
+                    <div class="collapsible-header" onclick="toggleSuggestedDownloads()" style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                        <span id="suggestedToggleIcon">▶</span>
+                        <h3 style="margin: 0;">💡 Suggested Downloads</h3>
+                        <span style="color: var(--secondary-text-color); font-size: 0.9rem;">Click to expand</span>
+                    </div>
+                    <div id="suggestedDownloadsSection" style="display: none; margin-top: 15px;">
                         <p style="margin-bottom: 15px; color: var(--secondary-text-color);">
                             Scan your browser history for frequently visited video URLs
                         </p>
@@ -3323,24 +3601,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             <div class="suggested-downloads" id="suggestedDownloads"></div>
                         </div>
                     </div>
-                    
-                    <!-- File Explorer Card -->
-                    <div class="card" style="grid-column: 1 / -1;">
-                        <h3>🗂️ Downloaded Files</h3>
-                        <div class="search-bar-container">
-                            <input type="text" id="fileSearchBar" class="search-input" 
-                                   placeholder="Search files by name, tags, or URL..." 
-                                   oninput="filterFiles(this.value)">
-                            <div class="search-icon">🔍</div>
-                        </div>
-                        <div class="file-explorer" id="fileExplorer">
-                            <div class="loading-container">
-                                <div class="loading-spinner"></div>
-                                <div>Loading files...</div>
-                            </div>
-                        </div>
-                    </div>
-                    
                 </div>
             </div>
             
@@ -3350,6 +3610,35 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 // Person names storage
                 const personNames = JSON.parse(localStorage.getItem('personNames') || '{{}}');
+                
+                // Deleted URLs storage for suggested downloads
+                const deletedUrls = JSON.parse(localStorage.getItem('deletedSuggestedUrls') || '{{}}');
+                
+                function isUrlDeleted(url) {{
+                    return deletedUrls[url] === true;
+                }}
+                
+                function markUrlAsDeleted(url) {{
+                    deletedUrls[url] = true;
+                    localStorage.setItem('deletedSuggestedUrls', JSON.stringify(deletedUrls));
+                }}
+                
+                function toggleSuggestedDownloads() {{
+                    const section = document.getElementById('suggestedDownloadsSection');
+                    const icon = document.getElementById('suggestedToggleIcon');
+                    
+                    if (section.style.display === 'none') {{
+                        section.style.display = 'block';
+                        icon.textContent = '▼';
+                    }} else {{
+                        section.style.display = 'none';
+                        icon.textContent = '▶';
+                    }}
+                }}
+                
+                function openUrlInNewTab(url) {{
+                    window.open(url, '_blank');
+                }}
                 
                 function getPersonName(filename) {{
                     return personNames[filename] || '';
@@ -3362,6 +3651,16 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         delete personNames[filename];
                     }}
                     localStorage.setItem('personNames', JSON.stringify(personNames));
+                }}
+                
+                function escapeFilename(filename) {{
+                    // Escape special characters for use in JavaScript strings
+                    return filename.replace(/\\\\/g, '\\\\\\\\')
+                                  .replace(/'/g, "\\\\'")
+                                  .replace(/"/g, '\\\\"')
+                                  .replace(/\\n/g, '\\\\n')
+                                  .replace(/\\r/g, '\\\\r')
+                                  .replace(/\\t/g, '\\\\t');
                 }}
                 
                 
@@ -3407,34 +3706,42 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         
                         scanStatus.textContent = `Found ${{historyItems.length}} history items, analyzing...`;
                         
-                        // Filter for video URLs and count visits
+                        // Filter for actual video URLs and count visits (excludes home pages, category pages, etc.)
                         const videoUrls = {{}};
-                        const videoSitePatterns = [
-                            /youtube\\.com\\/watch/i,
-                            /youtu\\.be\\//i,
-                            /vimeo\\.com\\/\\d+/i,
-                            /dailymotion\\.com\\/video/i,
-                            /tiktok\\.com\\/.*\\/video/i,
-                            /instagram\\.com\\/p\\//i,
-                            /instagram\\.com\\/reel\\//i,
-                            /facebook\\.com\\/.*\\/videos/i,
-                            /twitter\\.com\\/.*\\/status/i,
-                            /x\\.com\\/.*\\/status/i,
-                            /twitch\\.tv\\/videos/i,
-                            /pornhub\\.com\\/view_video/i,
-                            /xvideos\\.com\\/video/i,
-                            /xhamster\\.com\\/videos/i,
-                            /redtube\\.com\\/\\d+/i,
-                            /tnaflix\\.com\\/.*\\/video/i,
-                            /\\/watch|\\/video|\\/v[\\?\\/]|\\/(p|reel)\\//i
-                        ];
+                        
+                        // Function to check if URL is a valid video page (very strict)
+                        function isValidVideoUrl(url) {{
+                            // STRICT video-only patterns - must match one of these exactly
+                            const videoPatterns = [
+                                /youtube\\.com\\/watch\\?v=[a-zA-Z0-9_-]+(&.*)?$/i,
+                                /youtu\\.be\\/[a-zA-Z0-9_-]+$/i,
+                                /vimeo\\.com\\/\\d+$/i,
+                                /dailymotion\\.com\\/video\\/[a-zA-Z0-9_-]+$/i,
+                                /tiktok\\.com\\/.*\\/video\\/\\d+$/i,
+                                /instagram\\.com\\/p\\/[a-zA-Z0-9_-]+\\/$/i,
+                                /instagram\\.com\\/reel\\/[a-zA-Z0-9_-]+\\/$/i,
+                                /facebook\\.com\\/.*\\/videos\\/\\d+$/i,
+                                /twitter\\.com\\/.*\\/status\\/\\d+$/i,
+                                /x\\.com\\/.*\\/status\\/\\d+$/i,
+                                /twitch\\.tv\\/videos\\/\\d+$/i,
+                                /pornhub\\.com\\/view_video\\.php\\?viewkey=[a-zA-Z0-9_-]+(&.*)?$/i,
+                                /xvideos\\.com\\/video\\d+\\/[^/]+$/i,
+                                /xhamster\\.com\\/videos\\/[^/]+-\\d+$/i,
+                                /redtube\\.com\\/\\d+$/i,
+                                /tnaflix\\.com\\/.*\\/video\\/\\d+$/i,
+                                /eporner\\.com\\/video-[a-zA-Z0-9_-]+\\/[^/]+$/i,
+                                /xnxx\\.com\\/video-[a-zA-Z0-9_-]+\\/[^/]+$/i,
+                                /spankbang\\.com\\/[a-zA-Z0-9_-]+\\/video\\/[^/]+$/i
+                            ];
+                            
+                            return videoPatterns.some(pattern => pattern.test(url));
+                        }}
                         
                         for (const item of historyItems) {{
                             if (!item.url || !item.title) continue;
                             
-                            // Check if URL matches video patterns
-                            const isVideoUrl = videoSitePatterns.some(pattern => pattern.test(item.url));
-                            if (!isVideoUrl) continue;
+                            // Use strict video URL validation
+                            if (!isValidVideoUrl(item.url)) continue;
                             
                             // Skip if URL was deleted by user
                             if (isUrlDeleted(item.url)) continue;
@@ -3631,10 +3938,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 function formatHumanDate(timestamp) {{
                     const date = new Date(timestamp * 1000);
-                    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                                  'July', 'August', 'September', 'October', 'November', 'December'];
                     
-                    const month = months[date.getMonth()];
+                    const month = date.getMonth() + 1; // 0-indexed, so add 1
                     const day = date.getDate();
                     const year = date.getFullYear();
                     
@@ -3645,7 +3950,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     hours = hours ? hours : 12; // 0 should be 12
                     const minutesStr = minutes < 10 ? '0' + minutes : minutes;
                     
-                    return `${{month}} ${{day}}, ${{year}} @ ${{hours}}:${{minutesStr}}${{ampm}}`;
+                    return `${{month}}-${{day}}-${{year}} ${{hours}}:${{minutesStr}}${{ampm}}`;
                 }}
                 
                 function sortFiles(column) {{
@@ -3672,9 +3977,10 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                 aVal = a.sizeBytes;
                                 bVal = b.sizeBytes;
                                 break;
-                            case 'url':
-                                aVal = (a.url || '').toLowerCase();
-                                bVal = (b.url || '').toLowerCase();
+                            case 'length':
+                                // Parse duration from original.duration or use 0 if not available
+                                aVal = a.original && a.original.duration ? parseDurationToSeconds(a.original.duration) : 0;
+                                bVal = b.original && b.original.duration ? parseDurationToSeconds(b.original.duration) : 0;
                                 break;
                             case 'tags':
                                 aVal = getFileTags(a.name).join(' ').toLowerCase();
@@ -3720,15 +4026,11 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                         File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 8%">
-                                        Length
+                                    <th class="resizable-column" style="width: 8%; cursor: pointer;" onclick="sortFiles('length')" title="Sort by video length">
+                                        Length ${{currentSort.column === 'length' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 20%; cursor: pointer;" onclick="sortFiles('url')" title="Sort by source URL">
-                                        Source URL ${{currentSort.column === 'url' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
-                                        <div class="column-resizer"></div>
-                                    </th>
-                                    <th class="resizable-column" style="width: 15%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
+                                    <th class="resizable-column" style="width: 30%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
                                         Tags ${{currentSort.column === 'tags' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
@@ -3749,7 +4051,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                     
                                     if (isVideoFile) {{
                                         icon = '🎥';
-                                        clickHandler = `onclick="playVideo('${{file.name}}')"`;
+                                        clickHandler = `onclick="playVideo('${{escapeFilename(file.name)}}')"`;
                                         // Format video duration if available
                                         if (file.original.duration) {{
                                             length = formatDuration(file.original.duration);
@@ -3761,7 +4063,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                         rowClass = 'partial-file';
                                         length = '—';
                                     }} else {{
-                                        clickHandler = `onclick="openFile('${{file.name}}')"`;
+                                        clickHandler = `onclick="openFile('${{escapeFilename(file.name)}}')"`;
                                     }}
                                     
                                     const dateAdded = formatHumanDate(file.timestamp);
@@ -3773,38 +4075,35 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                             <td>
                                                 <div class="file-name-cell">
                                                     <span>${{icon}}</span>
-                                                    <span class="file-name-text" title="${{file.name}}">${{file.name}}</span>
+                                                    <span class="file-name-text" title="${{file.name}}">${{file.name.replace(/\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v|part|ytdl|temp)$/i, '')}}</span>
                                                 </div>
                                             </td>
                                             <td>
                                                 <input type="text" class="name-input" value="${{personName}}" 
                                                        placeholder="Enter name..." 
                                                        onclick="event.stopPropagation()" 
-                                                       onchange="savePersonName('${{file.name}}', this.value)">
+                                                       onchange="savePersonName('${{escapeFilename(file.name)}}', this.value)">
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>${{length}}</td>
-                                            <td title="${{file.url || 'No URL available'}}">
-                                                ${{file.url ? `<a href="${{file.url}}" target="_blank" style="color: var(--text-color); text-decoration: none; opacity: 0.7;" title="Open source URL">${{file.url.length > 50 ? file.url.substring(0, 50) + '...' : file.url}}</a>` : '<span style="opacity: 0.5;">No URL</span>'}}
-                                            </td>
                                             <td>
-                                                <div class="tags-container" data-filename="${{file.name}}">
-                                                    <div class="tags-display" onclick="event.stopPropagation(); editTags('${{file.name}}')"></div>
-                                                    <div class="tags-editor" style="display: none;">
-                                                        <input type="text" class="tags-input" placeholder="Add tags (up to 5)..." 
-                                                               onclick="event.stopPropagation()" 
-                                                               onkeypress="handleTagsKeypress(event, '${{file.name}}')"
-                                                               onblur="saveTags('${{file.name}}')">
-                                                    </div>
+                                                <div class="tags-input-container" data-filename="${{file.name}}" onclick="event.stopPropagation()">
+                                                    <div class="tags-chips"></div>
+                                                    <input type="text" class="tags-input-field" 
+                                                           placeholder="Add tags..." 
+                                                           onkeydown="handleTagInputKeydown(event, '${{escapeFilename(file.name)}}')"
+                                                           onblur="handleTagInputBlur(event, '${{escapeFilename(file.name)}}')"
+                                                           onfocus="handleTagInputFocus(event, '${{escapeFilename(file.name)}}')"
+                                                           onclick="event.stopPropagation()">
                                                 </div>
                                             </td>
                                             <td>
                                                 ${{isPartialFile ? `
                                                     <div class="file-actions">
-                                                        <button class="file-btn retry" onclick="event.stopPropagation(); retryPartialDownload('${{file.name}}')" title="Retry download">
+                                                        <button class="file-btn retry" onclick="event.stopPropagation(); retryPartialDownload('${{escapeFilename(file.name)}}')" title="Retry download">
                                                             🔄 Retry
                                                         </button>
-                                                        <button class="file-btn delete" onclick="event.stopPropagation(); deletePartialFile('${{file.name}}')" title="Delete partial file">
+                                                        <button class="file-btn delete" onclick="event.stopPropagation(); deletePartialFile('${{escapeFilename(file.name)}}')" title="Delete partial file">
                                                             🗑️ Delete
                                                         </button>
                                                     </div>
@@ -3928,7 +4227,12 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             renderFilesTable();
                         }}
                     }} catch (error) {{
+                        console.error('Error loading files:', error);
                         document.getElementById('fileExplorer').innerHTML = '<div class="empty-state">Error loading files</div>';
+                        // Check if it's a network error
+                        if (error instanceof TypeError && error.message === 'Failed to fetch') {{
+                            console.error('Network error: Unable to connect to server for file browsing');
+                        }}
                     }}
                 }}
                 
@@ -3945,7 +4249,21 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         // Show downloads section if there are any downloads OR if active count > 0
                         if ((result.downloads && result.downloads.length > 0) || result.active_downloads_count > 0) {{
                             downloadsSection.classList.add('active');
-                            downloadsList.innerHTML = result.downloads.map(download => {{
+                            
+                            const tableHeader = `
+                                <table class="downloads-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 50%;">Title</th>
+                                            <th style="width: 15%;">Status</th>
+                                            <th style="width: 15%;">Progress</th>
+                                            <th style="width: 20%;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                            `;
+                            
+                            const tableRows = result.downloads.map(download => {{
                                 const isActive = download.status === 'preparing' || download.status === 'downloading' || download.status === 'processing';
                                 const isFailed = download.status === 'error' || download.status === 'failed';
                                 const isCompleted = download.status === 'completed';
@@ -3966,37 +4284,60 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                     `;
                                 }} else if (isCancelled) {{
                                     buttons = `<button class="btn danger" onclick="deleteDownload('${{download.downloadId}}')">🗑️ Delete</button>`;
+                                }} else if (isCompleted) {{
+                                    buttons = `<button class="btn danger" onclick="clearDownload('${{download.downloadId}}')">✕</button>`;
                                 }}
                                 
-                                let metaText = '';
+                                let statusText = '';
+                                let progressContent = '';
+                                
                                 if (isActive) {{
-                                    metaText = `${{parseFloat(download.percent).toFixed(2) || 0}}% • ${{download.speed || 'Unknown speed'}} • ${{download.eta || 'Unknown ETA'}}`;
+                                    statusText = `<span class="download-status"><span class="status-indicator" style="background: ${{statusColor}};"></span>${{download.status}}</span>`;
+                                    progressContent = `
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div class="download-progress">
+                                                <div class="progress-fill" style="width: ${{parseFloat(download.percent).toFixed(1) || 0}}%"></div>
+                                            </div>
+                                            <span style="font-size: 0.8rem;">${{parseFloat(download.percent).toFixed(1) || 0}}%</span>
+                                        </div>
+                                        <div style="font-size: 0.7rem; color: var(--secondary-text-color); margin-top: 2px;">
+                                            ${{download.speed || 'Unknown speed'}} • ${{download.eta || 'Unknown ETA'}}
+                                        </div>
+                                    `;
                                 }} else if (isFailed) {{
                                     const retryText = download.retry_count > 0 ? ` (Retry #${{download.retry_count}})` : '';
-                                    metaText = `<span style="color: #f44336;">❌ Failed${{retryText}}: ${{download.error || 'Unknown error'}}</span>`;
+                                    statusText = `<span class="download-status"><span class="status-indicator" style="background: ${{statusColor}};"></span>Failed${{retryText}}</span>`;
+                                    progressContent = `<span style="color: #f44336; font-size: 0.8rem;">${{download.error || 'Unknown error'}}</span>`;
                                 }} else if (isCancelled) {{
-                                    metaText = '<span style="color: #9e9e9e;">⏸️ Cancelled</span>';
+                                    statusText = `<span class="download-status"><span class="status-indicator" style="background: ${{statusColor}};"></span>Cancelled</span>`;
+                                    progressContent = '—';
                                 }} else if (isCompleted) {{
-                                    metaText = '<span style="color: #4caf50;">✅ Completed</span>';
+                                    statusText = `<span class="download-status"><span class="status-indicator" style="background: ${{statusColor}};"></span>Completed</span>`;
+                                    progressContent = `<span style="color: #4caf50; font-size: 0.8rem;">✅ Done</span>`;
                                 }}
                                 
                                 return `
-                                    <div class="download-item" style="border-left: 4px solid ${{statusColor}};">
-                                        <div class="download-info">
-                                            <div class="download-title">${{download.title || 'Unknown Video'}}</div>
-                                            ${{isActive ? `
-                                                <div class="download-progress">
-                                                    <div class="progress-fill" style="width: ${{parseFloat(download.percent).toFixed(2) || 0}}%"></div>
-                                                </div>
-                                            ` : ''}}
-                                            <div class="download-meta">${{metaText}}</div>
-                                        </div>
-                                        <div class="download-actions" style="display: flex; gap: 8px; align-items: center;">
-                                            ${{buttons}}
-                                        </div>
-                                    </div>
+                                    <tr>
+                                        <td>
+                                            <div class="download-title" title="${{download.title || 'Unknown Video'}}">${{download.title || 'Unknown Video'}}</div>
+                                        </td>
+                                        <td>${{statusText}}</td>
+                                        <td>${{progressContent}}</td>
+                                        <td>
+                                            <div style="display: flex; gap: 4px;">
+                                                ${{buttons}}
+                                            </div>
+                                        </td>
+                                    </tr>
                                 `;
                             }}).join('');
+                            
+                            const tableFooter = `
+                                    </tbody>
+                                </table>
+                            `;
+                            
+                            downloadsList.innerHTML = tableHeader + tableRows + tableFooter;
                         }} else {{
                             downloadsSection.classList.remove('active');
                             // Clear the downloads list if no downloads
@@ -4004,6 +4345,11 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         }}
                     }} catch (error) {{
                         console.error('Failed to update downloads:', error);
+                        // Check if it's a network error
+                        if (error instanceof TypeError && error.message === 'Failed to fetch') {{
+                            console.error('Network error: Unable to connect to server at localhost:8080');
+                            console.error('Make sure the VidSnatch server is running');
+                        }}
                     }}
                 }}
                 
@@ -4149,6 +4495,22 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     }}
                 }}
                 
+                async function clearDownload(downloadId) {{
+                    try {{
+                        const response = await fetch(`/clear/${{downloadId}}`, {{ method: 'POST' }});
+                        const result = await response.json();
+                        
+                        if (result.success) {{
+                            console.log(`Cleared download: ${{result.message}}`);
+                            updateDownloads(); // Refresh the downloads list
+                        }} else {{
+                            alert('Failed to clear download: ' + result.error);
+                        }}
+                    }} catch (error) {{
+                        alert('Error clearing download: ' + error.message);
+                    }}
+                }}
+                
                 
                 let currentRetryFilename = null;
                 
@@ -4274,8 +4636,33 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             const candidates = [];
                             
                             for (const item of sortedItems) {{
-                                // Check if URL contains video-related indicators
-                                const isVideoUrl = /(watch|video|v)[\\/?]|youtube\\.com|vimeo\\.com|dailymotion|tiktok|instagram|facebook\\.com\\/.*\\/videos|twitter\\.com\\/.*\\/status/i.test(item.url);
+                                // Use strict video URL validation (same as suggestions)
+                                function isValidVideoUrlSearch(url) {{
+                                    const videoPatterns = [
+                                        /youtube\\.com\\/watch\\?v=[a-zA-Z0-9_-]+(&.*)?$/i,
+                                        /youtu\\.be\\/[a-zA-Z0-9_-]+$/i,
+                                        /vimeo\\.com\\/\\d+$/i,
+                                        /dailymotion\\.com\\/video\\/[a-zA-Z0-9_-]+$/i,
+                                        /tiktok\\.com\\/.*\\/video\\/\\d+$/i,
+                                        /instagram\\.com\\/p\\/[a-zA-Z0-9_-]+\\/$/i,
+                                        /instagram\\.com\\/reel\\/[a-zA-Z0-9_-]+\\/$/i,
+                                        /facebook\\.com\\/.*\\/videos\\/\\d+$/i,
+                                        /twitter\\.com\\/.*\\/status\\/\\d+$/i,
+                                        /x\\.com\\/.*\\/status\\/\\d+$/i,
+                                        /twitch\\.tv\\/videos\\/\\d+$/i,
+                                        /pornhub\\.com\\/view_video\\.php\\?viewkey=[a-zA-Z0-9_-]+(&.*)?$/i,
+                                        /xvideos\\.com\\/video\\d+\\/[^/]+$/i,
+                                        /xhamster\\.com\\/videos\\/[^/]+-\\d+$/i,
+                                        /redtube\\.com\\/\\d+$/i,
+                                        /tnaflix\\.com\\/.*\\/video\\/\\d+$/i,
+                                        /eporner\\.com\\/video-[a-zA-Z0-9_-]+\\/[^/]+$/i,
+                                        /xnxx\\.com\\/video-[a-zA-Z0-9_-]+\\/[^/]+$/i,
+                                        /spankbang\\.com\\/[a-zA-Z0-9_-]+\\/video\\/[^/]+$/i
+                                    ];
+                                    return videoPatterns.some(pattern => pattern.test(url));
+                                }}
+                                
+                                const isVideoUrl = isValidVideoUrlSearch(item.url);
                                 
                                 let score = 0;
                                 let strategy = '';
@@ -4791,6 +5178,30 @@ The web interface is limited by browser security - only extensions can access hi
                     }}
                 }}
                 
+                function parseDurationToSeconds(durationStr) {{
+                    if (!durationStr || durationStr === 'Unknown' || durationStr === '—') return 0;
+                    
+                    // Convert to string if it's not already
+                    const durStr = String(durationStr);
+                    
+                    // Handle duration strings like \"5:30\" or \"1:23:45\"
+                    const parts = durStr.split(':').map(p => parseInt(p, 10));
+                    
+                    if (parts.length === 2) {{
+                        // Format: \"MM:SS\"
+                        const [minutes, seconds] = parts;
+                        return (minutes * 60) + seconds;
+                    }} else if (parts.length === 3) {{
+                        // Format: \"HH:MM:SS\"
+                        const [hours, minutes, seconds] = parts;
+                        return (hours * 3600) + (minutes * 60) + seconds;
+                    }}
+                    
+                    // If it's just a number, assume it's already in seconds
+                    const numValue = parseFloat(durStr);
+                    return isNaN(numValue) ? 0 : numValue;
+                }}
+                
                 async function loadSuggestions() {{
                     const loadBtn = document.getElementById('loadSuggestionsBtn');
                     const suggestedContainer = document.getElementById('suggestedContainer');
@@ -4862,7 +5273,10 @@ The web interface is limited by browser security - only extensions can access hi
                 function displaySuggestions(suggestions) {{
                     const suggestedDownloads = document.getElementById('suggestedDownloads');
                     
-                    if (suggestions.length === 0) {{
+                    // Filter out deleted URLs
+                    const filteredSuggestions = suggestions.filter(suggestion => !isUrlDeleted(suggestion.url));
+                    
+                    if (filteredSuggestions.length === 0) {{
                         suggestedDownloads.innerHTML = `
                             <div style="text-align: center; padding: 20px; color: var(--secondary-text-color);">
                                 No suggested downloads found. Visit video sites more frequently to get suggestions.
@@ -4871,24 +5285,22 @@ The web interface is limited by browser security - only extensions can access hi
                         return;
                     }}
                     
-                    const suggestionsHtml = suggestions.map(suggestion => {{
+                    const suggestionsHtml = filteredSuggestions.map(suggestion => {{
                         // Escape single quotes for onclick attributes
                         const escapedUrl = suggestion.url.replace(/'/g, "\\'");
                         const escapedTitle = suggestion.title.replace(/'/g, "\\'");
                         
                         return `
                             <div class="suggestion-item">
-                                <div class="suggestion-info">
-                                    <div class="suggestion-title">${{suggestion.title}}</div>
-                                    <div class="suggestion-url">${{suggestion.url}}</div>
-                                    <div class="suggestion-meta">Visited ${{suggestion.visitCount}} times</div>
-                                </div>
+                                <div class="suggestion-title" title="${{suggestion.title}}">${{suggestion.title}}</div>
+                                <div class="suggestion-url" onclick="openUrlInNewTab('${{escapedUrl}}')" title="Click to open URL">${{suggestion.url}}</div>
+                                <div class="suggestion-meta">Visited ${{suggestion.visitCount}} times</div>
                                 <div class="suggestion-actions">
                                     <button class="suggestion-btn download" onclick="downloadSuggestion('${{escapedUrl}}', '${{escapedTitle}}')">
                                         Download
                                     </button>
-                                    <button class="suggestion-btn delete" onclick="removeSuggestion('${{escapedUrl}}')">
-                                        Remove
+                                    <button class="suggestion-btn delete" onclick="deleteSuggestion('${{escapedUrl}}')">
+                                        Delete
                                     </button>
                                 </div>
                             </div>
@@ -4898,7 +5310,10 @@ The web interface is limited by browser security - only extensions can access hi
                     suggestedDownloads.innerHTML = suggestionsHtml;
                 }}
                 
-                function removeSuggestion(url) {{
+                function deleteSuggestion(url) {{
+                    // Mark URL as deleted permanently
+                    markUrlAsDeleted(url);
+                    
                     // Find and remove the suggestion item from the display
                     const suggestionItems = document.querySelectorAll('.suggestion-item');
                     suggestionItems.forEach(item => {{
@@ -5051,29 +5466,108 @@ The web interface is limited by browser security - only extensions can access hi
                     const container = document.querySelector(`[data-filename="${{filename}}"]`);
                     if (!container) return;
                     
-                    const display = container.querySelector('.tags-display');
+                    const chipsContainer = container.querySelector('.tags-chips');
                     const tags = getFileTags(filename);
                     
                     if (tags.length === 0) {{
-                        display.innerHTML = '<span class="empty">Click to add tags</span>';
-                        display.className = 'tags-display empty';
+                        chipsContainer.innerHTML = '';
                     }} else {{
                         const tagsHTML = tags.map(tag => `
-                            <span class="tag-badge" title="${{tag}}">${{tag}}</span>
+                            <span class="tag-chip" title="${{tag}}" onclick="addTagToSearch('${{escapeFilename(tag)}}')">
+                                <span>${{tag}}</span>
+                                <span class="tag-remove" onclick="event.stopPropagation(); removeTag('${{escapeFilename(filename)}}', '${{escapeFilename(tag)}}')">&times;</span>
+                            </span>
                         `).join('');
-                        display.innerHTML = tagsHTML;
-                        display.className = 'tags-display';
+                        chipsContainer.innerHTML = tagsHTML;
                     }}
                 }}
                 
                 function initializeAllTagsDisplays() {{
                     // Initialize tags display for all files
-                    document.querySelectorAll('.tags-container').forEach(container => {{
+                    document.querySelectorAll('.tags-input-container').forEach(container => {{
                         const filename = container.getAttribute('data-filename');
                         if (filename) {{
                             updateTagsDisplay(filename);
                         }}
                     }});
+                }}
+                
+                function handleTagInputKeydown(event, filename) {{
+                    const input = event.target;
+                    const value = input.value.trim();
+                    
+                    // Handle Enter, Space, Comma, or Tab to create tags
+                    if ((event.key === 'Enter' || event.key === ' ' || event.key === ',' || event.key === 'Tab') && value) {{
+                        event.preventDefault();
+                        addTag(filename, value);
+                        input.value = '';
+                    }}
+                    // Handle Backspace on empty input to remove last tag
+                    else if (event.key === 'Backspace' && !value) {{
+                        const tags = getFileTags(filename);
+                        if (tags.length > 0) {{
+                            removeTag(filename, tags[tags.length - 1]);
+                        }}
+                    }}
+                }}
+                
+                function handleTagInputBlur(event, filename) {{
+                    const input = event.target;
+                    const value = input.value.trim();
+                    
+                    if (value) {{
+                        addTag(filename, value);
+                        input.value = '';
+                    }}
+                }}
+                
+                function handleTagInputFocus(event, filename) {{
+                    // Optional: Add focus styling or behavior
+                    event.target.style.outline = 'none';
+                }}
+                
+                function addTag(filename, tagText) {{
+                    if (!tagText) return;
+                    
+                    const currentTags = getFileTags(filename);
+                    const newTag = tagText.trim();
+                    
+                    // Avoid duplicates and limit to 5 tags
+                    if (!currentTags.includes(newTag) && currentTags.length < 5) {{
+                        const updatedTags = [...currentTags, newTag];
+                        setFileTags(filename, updatedTags);
+                        updateTagsDisplay(filename);
+                    }}
+                }}
+                
+                function removeTag(filename, tagToRemove) {{
+                    const currentTags = getFileTags(filename);
+                    const updatedTags = currentTags.filter(tag => tag !== tagToRemove);
+                    setFileTags(filename, updatedTags);
+                    updateTagsDisplay(filename);
+                }}
+                
+                function addTagToSearch(tag) {{
+                    const searchInput = document.getElementById('fileSearchBar');
+                    const currentValue = searchInput.value.trim();
+                    
+                    // Check if tag is already in the search
+                    if (currentValue.toLowerCase().includes(tag.toLowerCase())) {{
+                        return;
+                    }}
+                    
+                    // Add tag to search with a space if there's existing content
+                    if (currentValue) {{
+                        searchInput.value = currentValue + ' ' + tag;
+                    }} else {{
+                        searchInput.value = tag;
+                    }}
+                    
+                    // Trigger the filter
+                    filterFiles(searchInput.value);
+                    
+                    // Focus the search input
+                    searchInput.focus();
                 }}
 
                 async function openUninstaller() {{
@@ -5099,6 +5593,52 @@ The web interface is limited by browser security - only extensions can access hi
         """Override to customize log messages."""
         print(f" [API] {format % args}")
 
+def clean_stuck_downloads():
+    """Clean up downloads stuck in preparing state for too long."""
+    current_time = time.time()
+    stuck_timeout = 30  # Consider stuck after 30 seconds in preparing state
+    
+    with download_lock:
+        stuck_downloads = []
+        for download_id, progress in list(active_downloads.items()):
+            # Check if download is stuck in preparing state
+            if progress.status == 'preparing':
+                runtime = current_time - progress.start_time
+                if runtime > stuck_timeout:
+                    stuck_downloads.append((download_id, progress))
+        
+        # Clean up stuck downloads
+        for download_id, progress in stuck_downloads:
+            runtime = current_time - progress.start_time
+            print(f" [!] Cleaning stuck download: {progress.title} (stuck in preparing for {runtime:.0f}s)")
+            progress.status = 'failed'
+            progress.error = 'Download stuck in preparing state'
+            
+            # Move to failed downloads
+            failed_downloads[download_id] = {
+                'title': progress.title,
+                'url': progress.url,
+                'error': 'Stuck in preparing state - cleaned up',
+                'retry_count': getattr(progress, 'retry_count', 0),
+                'failed_at': current_time
+            }
+            
+            del active_downloads[download_id]
+        
+        if stuck_downloads:
+            save_active_downloads()
+            save_failed_downloads()
+            print(f" [+] Cleaned {len(stuck_downloads)} stuck downloads")
+
+def monitor_downloads():
+    """Background thread to monitor and clean stuck downloads."""
+    while True:
+        time.sleep(30)  # Check every 30 seconds
+        try:
+            clean_stuck_downloads()
+        except Exception as e:
+            print(f" [!] Error in download monitor: {e}")
+
 def auto_retry_incomplete_downloads(handler_class):
     """Automatically retry incomplete downloads from URL tracker."""
     tracker = get_tracker()
@@ -5107,44 +5647,23 @@ def auto_retry_incomplete_downloads(handler_class):
     if incomplete:
         print(f" [+] Found {len(incomplete)} incomplete downloads to retry")
         
+        # Instead of broken auto-retry, just mark them as failed for manual retry
         for url_track_id, url_data in incomplete:
             try:
-                print(f" [+] Auto-retrying: {url_data['title']}")
-                
-                # Mark as attempting
-                tracker.mark_attempting(url_track_id)
-                
-                # Create a new download
+                # Create a failed download entry
                 download_id = str(uuid.uuid4())
-                progress = DownloadProgress(download_id, url_data['url'], url_data['title'])
-                progress.url_track_id = url_track_id
-                progress.retry_count = url_data.get('attempts', 0)
-                
-                with download_lock:
-                    active_downloads[download_id] = progress
-                    save_active_downloads()
-                
-                # Create a dummy handler instance for download
-                class DummyRequest:
-                    def makefile(self, *args):
-                        return None
-                
-                handler = handler_class(DummyRequest(), ('127.0.0.1', 0), None)
-                
-                # Start download in background thread
-                download_thread = threading.Thread(
-                    target=handler.download_video_with_progress,
-                    args=(progress, True)  # Always open folder for auto-retry
-                )
-                download_thread.daemon = True
-                download_thread.start()
-                
-                # Small delay between retries
-                time.sleep(2)
+                failed_downloads[download_id] = {
+                    'title': url_data['title'],
+                    'url': url_data['url'],
+                    'error': 'Download interrupted by server restart',
+                    'retry_count': url_data.get('attempts', 0),
+                    'failed_at': time.time()
+                }
+                print(f" [!] Marked as failed: {url_data['title']}")
+                tracker.mark_failed(url_track_id, "Server restart - marked for manual retry")
                 
             except Exception as e:
-                print(f" [!] Error auto-retrying {url_data['title']}: {e}")
-                tracker.mark_failed(url_track_id, str(e))
+                print(f" [!] Error processing incomplete download {url_data['title']}: {e}")
 
 def start_server(port=8080):
     """Start the enhanced Quikvid-DL web server."""
@@ -5176,6 +5695,14 @@ def start_server(port=8080):
     retry_thread = threading.Thread(target=delayed_auto_retry)
     retry_thread.daemon = True
     retry_thread.start()
+    
+    # Start monitor thread to clean stuck downloads
+    monitor_thread = threading.Thread(target=monitor_downloads)
+    monitor_thread.daemon = True
+    monitor_thread.start()
+    
+    # Clean any currently stuck downloads immediately
+    clean_stuck_downloads()
     
     try:
         httpd.serve_forever()

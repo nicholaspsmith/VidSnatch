@@ -41,6 +41,3 @@ fi
 # Launch the GUI installer/uninstaller
 echo "🎬 Launching VidSnatch Manager..."
 python3 gui_installer.py
-
-echo "VidSnatch Manager session complete. Press any key to close..."
-read -n 1
