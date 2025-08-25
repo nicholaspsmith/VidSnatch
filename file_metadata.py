@@ -8,10 +8,10 @@ import json
 import os
 import time
 import threading
-import hashlib
+from modules.config import FILE_METADATA_FILE
 
 class FileMetadata:
-    def __init__(self, storage_file='.logs/file_metadata.json'):
+    def __init__(self, storage_file=FILE_METADATA_FILE):
         self.storage_file = storage_file
         self.metadata = {}
         self.lock = threading.Lock()

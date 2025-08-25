@@ -9,9 +9,10 @@ import os
 import time
 from datetime import datetime
 import threading
+from modules.config import URL_TRACKER_FILE
 
 class URLTracker:
-    def __init__(self, storage_file='.logs/url_tracker.json'):
+    def __init__(self, storage_file=URL_TRACKER_FILE):
         self.storage_file = storage_file
         self.urls = {}
         self.lock = threading.Lock()

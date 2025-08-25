@@ -1,4 +1,32 @@
 // Background service worker
+
+// Constants
+const CONFIG = {
+  SERVER_URL: 'http://localhost:8080',
+  HISTORY_SEARCH_DAYS: 30,
+  MAX_HISTORY_RESULTS: 3000,
+  MAX_SUGGESTED_RESULTS: 10000,
+  MAX_RETRY_CANDIDATES: 4,
+  MIN_MATCH_SCORE: 0.3,
+  SUGGESTED_MIN_VISITS: 3,
+  MAX_SUGGESTIONS: 20,
+  RETRY_DELAY_MS: 1000
+};
+
+const VIDEO_SITE_REGEX = /youtube|vimeo|dailymotion|twitch|pornhub|xvideos|redtube|xnxx|xhamster|spankbang|tnaflix|tube8|youporn|pornmd|4tube|sunporno|nuvid|eporner|gotporn|vjav|porntrex|heavy-r|motherless|hqporner|fapbase|rule34video|redgifs|reallifecam|adulttime|brazzers|bangbros|reality/i;
+
+const VIDEO_EXTENSIONS = /(mp4|mkv|avi|mov|webm|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|vob|ogv|rm|rmvb|asf|divx|xvid|f4v)/i;
+
+const BADGE_COLORS = {
+  VIDEO_DETECTED: '#4CAF50',
+  DEFAULT: ''
+};
+
+const TITLES = {
+  VIDEO_DOWNLOAD: 'Download video from this page',
+  NO_VIDEO: 'Quikvid-DL - No video detected'
+};
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Quikvid-DL Extension installed');
 });
@@ -19,38 +47,79 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                        message.data.hasVideoElements || 
                        message.data.hasVideoKeywords;
     
-    if (isVideoPage && sender.tab) {
-      chrome.action.setBadgeText({
-        text: '📹',
-        tabId: sender.tab.id
-      });
-      chrome.action.setBadgeBackgroundColor({
-        color: '#4CAF50',
-        tabId: sender.tab.id
-      });
-      chrome.action.setTitle({
-        title: 'Download video from this page',
-        tabId: sender.tab.id
-      });
-    } else if (sender.tab) {
-      chrome.action.setBadgeText({
-        text: '',
-        tabId: sender.tab.id
-      });
-      chrome.action.setTitle({
-        title: 'Quikvid-DL - No video detected',
-        tabId: sender.tab.id
-      });
+    if (sender.tab) {
+      updateBadgeForVideoDetection(sender.tab.id, isVideoPage);
     }
   }
 });
 
+// Helper function to update badge based on video detection
+function updateBadgeForVideoDetection(tabId, isVideoPage) {
+  if (isVideoPage) {
+    chrome.action.setBadgeText({
+      text: '📹',
+      tabId: tabId
+    });
+    chrome.action.setBadgeBackgroundColor({
+      color: BADGE_COLORS.VIDEO_DETECTED,
+      tabId: tabId
+    });
+    chrome.action.setTitle({
+      title: TITLES.VIDEO_DOWNLOAD,
+      tabId: tabId
+    });
+  } else {
+    clearBadge(tabId);
+  }
+}
+
+// Helper function to clear badge
+function clearBadge(tabId) {
+  chrome.action.setBadgeText({
+    text: BADGE_COLORS.DEFAULT,
+    tabId: tabId
+  });
+  chrome.action.setTitle({
+    title: TITLES.NO_VIDEO,
+    tabId: tabId
+  });
+}
+
+// Helper function to clean filename for search
+function cleanFilenameForSearch(filename) {
+  return filename
+    .replace(new RegExp(`\\.(${VIDEO_EXTENSIONS.source})(\\.(part|tmp|crdownload))*$`, 'i'), '')
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Helper function to search browser history
+async function searchBrowserHistory(maxResults, startTime) {
+  return new Promise((resolve) => {
+    chrome.history.search({
+      text: '',
+      maxResults: maxResults,
+      startTime: startTime
+    }, (results) => {
+      resolve(results || []);
+    });
+  });
+}
+
+// Helper function to check if URL is a video site
+function isVideoSite(url) {
+  return VIDEO_SITE_REGEX.test(url);
+}
+
+// Helper function to delay execution
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Clear badge when tab changes
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  chrome.action.setBadgeText({
-    text: '',
-    tabId: activeInfo.tabId
-  });
+  clearBadge(activeInfo.tabId);
 });
 
 // Handle extension icon click (when popup is disabled)
@@ -65,116 +134,22 @@ async function handleWebInterfaceRetry(filename, sendResponse) {
     console.log(`Searching browser history for retry: ${filename}`);
     
     // Clean the filename to extract search terms
-    const searchTitle = filename
-      .replace(/\.(mp4|mkv|avi|mov|webm|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|vob|ogv|rm|rmvb|asf|divx|xvid|f4v)(\\.part|\\.tmp|\\.crdownload)*$/i, '')
-      .replace(/[_-]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const searchTitle = cleanFilenameForSearch(filename);
     
     // Search browser history
-    const historyItems = await new Promise((resolve) => {
-      chrome.history.search({
-        text: '',
-        maxResults: 3000,
-        startTime: Date.now() - (30 * 24 * 60 * 60 * 1000) // Last 30 days
-      }, (results) => {
-        resolve(results || []);
-      });
-    });
+    const startTime = Date.now() - (CONFIG.HISTORY_SEARCH_DAYS * 24 * 60 * 60 * 1000);
+    const historyItems = await searchBrowserHistory(CONFIG.MAX_HISTORY_RESULTS, startTime);
     
     console.log(`Found ${historyItems.length} history items to search`);
     
     // Score and find best matches
-    const matches = [];
-    for (const item of historyItems) {
-      if (!item.url || !item.title) continue;
-      
-      // Check if it's a video site
-      const isVideoSite = /youtube|vimeo|dailymotion|twitch|pornhub|xvideos|redtube|xnxx|xhamster|spankbang|tnaflix|tube8|youporn|pornmd|4tube|sunporno|nuvid|eporner|gotporn|vjav|porntrex|heavy-r|motherless|hqporner|fapbase|rule34video|redgifs|reallifecam|adulttime|brazzers|bangbros|reality/i.test(item.url);
-      
-      if (isVideoSite) {
-        // Calculate fuzzy match score
-        const titleScore = calculateFuzzyMatch(searchTitle.toLowerCase(), item.title.toLowerCase());
-        const urlScore = calculateFuzzyMatch(searchTitle.toLowerCase(), item.url.toLowerCase());
-        const finalScore = Math.max(titleScore, urlScore);
-        
-        if (finalScore >= 0.3) { // Lower threshold for more matches
-          matches.push({
-            url: item.url,
-            title: item.title,
-            score: finalScore,
-            visitCount: item.visitCount || 1
-          });
-        }
-      }
-    }
-    
-    // Sort by score and visit count
-    matches.sort((a, b) => {
-      if (Math.abs(a.score - b.score) < 0.1) {
-        return b.visitCount - a.visitCount;
-      }
-      return b.score - a.score;
-    });
+    const matches = findMatchingVideoUrls(historyItems, searchTitle);
     
     console.log(`Found ${matches.length} potential matches`);
     
-    // Try up to 4 matches, starting with the best
-    const candidatesToTry = matches.slice(0, 4);
-    let lastError = null;
-    
-    for (let i = 0; i < candidatesToTry.length; i++) {
-      const candidate = candidatesToTry[i];
-      
-      // Only try candidates with reasonable scores
-      if (candidate.score < 0.3) break;
-      
-      console.log(`Trying candidate ${i + 1}/${candidatesToTry.length}: ${candidate.url} (${(candidate.score * 100).toFixed(1)}% match)`);
-      
-      try {
-        const response = await fetch('http://localhost:8080/download', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: candidate.url,
-            title: searchTitle,
-            openFolder: true,
-            isRetry: true
-          })
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          sendResponse({
-            success: true,
-            message: `Found URL with ${(candidate.score * 100).toFixed(1)}% match (attempt ${i + 1}). Retry started!`,
-            downloadId: result.downloadId,
-            matchedUrl: candidate.url,
-            attemptNumber: i + 1
-          });
-          return; // Success! Exit the function
-        } else {
-          const errorText = await response.text();
-          lastError = `Server error: ${response.status} - ${errorText}`;
-          console.log(`Attempt ${i + 1} failed: ${lastError}`);
-        }
-      } catch (downloadError) {
-        lastError = downloadError.message;
-        console.log(`Attempt ${i + 1} failed: ${lastError}`);
-      }
-      
-      // If not the last attempt, wait a moment before trying the next
-      if (i < candidatesToTry.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-    
-    // If we get here, all attempts failed
-    sendResponse({
-      success: false,
-      error: `Tried ${candidatesToTry.length} URL(s) but all failed. Last error: ${lastError}`,
-      foundMatches: candidatesToTry.map(m => ({ url: m.url, title: m.title, score: m.score }))
-    });
+    // Try downloading from the best matches
+    const result = await tryDownloadFromCandidates(matches, searchTitle);
+    sendResponse(result);
     
   } catch (error) {
     console.error('Error in handleWebInterfaceRetry:', error);
@@ -183,6 +158,96 @@ async function handleWebInterfaceRetry(filename, sendResponse) {
       error: `Browser history search failed: ${error.message}`
     });
   }
+}
+
+// Helper function to find matching video URLs from history
+function findMatchingVideoUrls(historyItems, searchTitle) {
+  const matches = [];
+  
+  for (const item of historyItems) {
+    if (!item.url || !item.title) continue;
+    
+    if (isVideoSite(item.url)) {
+      const titleScore = calculateFuzzyMatch(searchTitle.toLowerCase(), item.title.toLowerCase());
+      const urlScore = calculateFuzzyMatch(searchTitle.toLowerCase(), item.url.toLowerCase());
+      const finalScore = Math.max(titleScore, urlScore);
+      
+      if (finalScore >= CONFIG.MIN_MATCH_SCORE) {
+        matches.push({
+          url: item.url,
+          title: item.title,
+          score: finalScore,
+          visitCount: item.visitCount || 1
+        });
+      }
+    }
+  }
+  
+  // Sort by score and visit count
+  matches.sort((a, b) => {
+    if (Math.abs(a.score - b.score) < 0.1) {
+      return b.visitCount - a.visitCount;
+    }
+    return b.score - a.score;
+  });
+  
+  return matches;
+}
+
+// Helper function to try downloading from candidates
+async function tryDownloadFromCandidates(matches, searchTitle) {
+  const candidatesToTry = matches.slice(0, CONFIG.MAX_RETRY_CANDIDATES);
+  let lastError = null;
+  
+  for (let i = 0; i < candidatesToTry.length; i++) {
+    const candidate = candidatesToTry[i];
+    
+    if (candidate.score < CONFIG.MIN_MATCH_SCORE) break;
+    
+    console.log(`Trying candidate ${i + 1}/${candidatesToTry.length}: ${candidate.url} (${(candidate.score * 100).toFixed(1)}% match)`);
+    
+    try {
+      const response = await fetch(`${CONFIG.SERVER_URL}/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: candidate.url,
+          title: searchTitle,
+          openFolder: true,
+          isRetry: true
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          success: true,
+          message: `Found URL with ${(candidate.score * 100).toFixed(1)}% match (attempt ${i + 1}). Retry started!`,
+          downloadId: result.downloadId,
+          matchedUrl: candidate.url,
+          attemptNumber: i + 1
+        };
+      } else {
+        const errorText = await response.text();
+        lastError = `Server error: ${response.status} - ${errorText}`;
+        console.log(`Attempt ${i + 1} failed: ${lastError}`);
+      }
+    } catch (downloadError) {
+      lastError = downloadError.message;
+      console.log(`Attempt ${i + 1} failed: ${lastError}`);
+    }
+    
+    // Delay before next attempt
+    if (i < candidatesToTry.length - 1) {
+      await delay(CONFIG.RETRY_DELAY_MS);
+    }
+  }
+  
+  return {
+    success: false,
+    error: `Tried ${candidatesToTry.length} URL(s) but all failed. Last error: ${lastError}`,
+    foundMatches: candidatesToTry.map(m => ({ url: m.url, title: m.title, score: m.score }))
+  };
 }
 
 // Fuzzy matching algorithm

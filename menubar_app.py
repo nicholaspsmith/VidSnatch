@@ -8,6 +8,7 @@ import sys
 import signal
 import platform
 from pathlib import Path
+from modules.config import UIConstants, DEFAULT_SERVER_PORT, DEFAULT_SERVER_HOST
 
 try:
     import pystray
@@ -126,7 +127,10 @@ class VidSnatchMenuBar:
             if os.path.exists(icon_path):
                 image = Image.open(icon_path)
                 # Resize to menu bar size (typically 16-22px on macOS)
-                image = image.resize((22, 22), Image.Resampling.LANCZOS)
+                image = image.resize(
+                    (UIConstants.MENU_ICON_SIZE, UIConstants.MENU_ICON_SIZE),
+                    Image.Resampling.LANCZOS
+                )
                 return image
         except Exception as e:
             print(f"Could not load extension icon: {e}")
@@ -197,7 +201,7 @@ class VidSnatchMenuBar:
             try:
                 # First try to stop via HTTP request
                 try:
-                    requests.post("http://localhost:8080/stop-server", timeout=2)
+                    requests.post(f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}/stop-server", timeout=2)
                     time.sleep(1)  # Give server time to shutdown gracefully
                 except Exception as e:
                     print(f"Note: Could not send stop request to server (may already be stopped): {e}")
@@ -242,7 +246,7 @@ class VidSnatchMenuBar:
     def check_server_status(self):
         """Check if server is responding"""
         try:
-            response = requests.get("http://localhost:8080", timeout=2)
+            response = requests.get(f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}", timeout=2)
             return response.status_code == 200
         except Exception as e:
             # Don't log this one as it happens frequently during normal operation
@@ -282,7 +286,7 @@ class VidSnatchMenuBar:
                 self.server_running = True
                 # Update menu immediately after starting
                 self.update_menu(icon)
-                icon.notify("VidSnatch server started - http://localhost:8080")
+                icon.notify(f"VidSnatch server started - http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}")
             else:
                 # Update menu even if failed to start
                 self.update_menu(icon)
@@ -294,7 +298,7 @@ class VidSnatchMenuBar:
         import subprocess
         import platform
         
-        web_url = "http://localhost:8080"
+        web_url = f"http://{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}"
         
         # On macOS, try to use AppleScript to find existing tabs
         if platform.system() == "Darwin":
@@ -307,7 +311,7 @@ class VidSnatchMenuBar:
                                 set tabFound to false
                                 repeat with w in windows
                                     repeat with t in tabs of w
-                                        if URL of t contains "localhost:8080" then
+                                        if URL of t contains "{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}" then
                                             set active tab of w to t
                                             activate
                                             set tabFound to true
@@ -326,7 +330,7 @@ class VidSnatchMenuBar:
                                 set tabFound to false
                                 repeat with w in windows
                                     repeat with t in tabs of w
-                                        if URL of t contains "localhost:8080" then
+                                        if URL of t contains "{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}" then
                                             set current tab of w to t
                                             activate
                                             set tabFound to true
@@ -345,7 +349,7 @@ class VidSnatchMenuBar:
                                 set tabFound to false
                                 repeat with w in windows
                                     repeat with t in tabs of w
-                                        if URL of t contains "localhost:8080" then
+                                        if URL of t contains "{DEFAULT_SERVER_HOST}:{DEFAULT_SERVER_PORT}" then
                                             set active tab index of w to index of t
                                             activate
                                             set tabFound to true

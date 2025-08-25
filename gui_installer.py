@@ -22,12 +22,21 @@ import shutil
 import signal
 import time
 from pathlib import Path
+from modules.config import UIConstants
+from modules.installer_utils import (
+    check_and_install_dependencies,
+    kill_processes_by_pattern,
+    create_virtual_environment,
+    install_requirements_in_venv,
+    create_macos_app_bundle
+)
 
 class VidSnatchInstaller:
     def __init__(self, root):
         self.root = root
         self.root.title("VidSnatch Manager")
-        self.root.geometry("700x800")
+        geometry = f"{UIConstants.MAIN_WINDOW_WIDTH}x{UIConstants.MAIN_WINDOW_HEIGHT}"
+        self.root.geometry(geometry)
         self.root.resizable(False, False)
         
         # Center the window on screen

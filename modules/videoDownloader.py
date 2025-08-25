@@ -10,6 +10,7 @@ import modules.utilities as utilities
 import modules.config as config
 import modules.settings as settings
 import modules.folderSelector as folderSelector
+from modules.config import get_site_config
 
 def download_video(url, download_path):
     """Download a video from the given URL."""
@@ -22,99 +23,50 @@ def download_video(url, download_path):
                 cleaned_title = utilities.clean_video_title(d['info_dict']['title'])
                 print(f" [+] Downloaded: {cleaned_title}")
     
+    # Get site-specific configuration
+    site_config = get_site_config(url)
+    
+    # Base configuration
     ydl_opts = {
-        'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
-        'socket_timeout': 180,  # 3 minutes socket timeout for slow CDNs
-        'retries': 5,  # Retry 5 times on failure  
-        'fragment_retries': 5,  # Retry fragments 5 times
-        'file_access_retries': 3,  # Retry file access
+        'outtmpl': os.path.join(
+            download_path, 
+            site_config.get('output_template', config.DEFAULT_OUTPUT_TEMPLATE)
+        ),
+        'socket_timeout': 180,
+        'retries': site_config.get('retries', 5),
+        'fragment_retries': site_config.get('retries', 5),
+        'file_access_retries': 3,
         'progress_hooks': [clean_title_hook],
-        # Add headers to improve CDN compatibility
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'User-Agent': site_config.get(
+                'user_agent',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/131.0.0.0 Safari/537.36'
+            ),
+            'Accept': ('text/html,application/xhtml+xml,application/xml;'
+                      'q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'),
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
         },
-        # CDN-specific optimizations  
         'external_downloader_args': {
             'default': ['--retry-connrefused', '--retry', '5', '--timeout', '300']
         }
     }
     
-    # Apply site-specific settings for better compatibility
-    if 'youtube.com' in url or 'youtu.be' in url:
+    # Apply site-specific sleep interval if configured
+    if 'sleep_interval' in site_config:
+        ydl_opts['sleep_interval_requests'] = site_config['sleep_interval']
+    
+    # Apply YouTube-specific extractor args if configured
+    if 'player_client' in site_config:
         ydl_opts['extractor_args'] = {
             'youtube': {
-                'player_client': ['android'],  # Use Android client for better compatibility
+                'player_client': site_config['player_client']
             }
         }
-    elif 'pornhub.com' in url:
-        # Add Pornhub-specific configuration
-        ydl_opts.update({
-            'retries': 10,
-            'fragment_retries': 10,
-            'sleep_interval_requests': 3,
-            'http_headers': {
-                **ydl_opts['http_headers'],
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://www.pornhub.com/',
-            }
-        })
-    elif 'xhamster.com' in url:
-        # Add XHamster-specific configuration
-        ydl_opts.update({
-            'retries': 15,
-            'fragment_retries': 15,
-            'sleep_interval_requests': 2,
-            'socket_timeout': 300,
-            'http_headers': {
-                **ydl_opts['http_headers'],
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Accept-Encoding': 'gzip,deflate',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Referer': 'https://xhamster.com/',
-            },
-            # Disable SSL verification if needed and use alternate extraction
-            'nocheckcertificate': True,
-            'ignoreerrors': False,
-            'no_warnings': False,
-        })
-    elif 'eporner.com' in url:
-        # Add Eporner-specific configuration to handle hash extraction issues
-        ydl_opts.update({
-            'retries': 20,
-            'fragment_retries': 20,
-            'sleep_interval_requests': 3,
-            'socket_timeout': 300,
-            'http_headers': {
-                **ydl_opts['http_headers'],
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0',
-                'Referer': 'https://www.eporner.com/',
-            },
-            'nocheckcertificate': False,
-            'ignoreerrors': True,  # Try to continue on errors
-            'no_warnings': False,
-            'writesubtitles': False,
-            'writeautomaticsub': False,
-        })
     
     try:
         # Custom preprocessor to clean titles before file naming
