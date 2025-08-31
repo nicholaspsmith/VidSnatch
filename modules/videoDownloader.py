@@ -87,8 +87,72 @@ def download_video(url, download_path):
             ydl.extract_info(url, download=True)
         return True
     except (yt_dlp.DownloadError, AttributeError) as e:
+        # Try manual extraction for XHamster if the built-in extractor fails
+        if 'xhamster.com' in url and ('unable to download video data' in str(e).lower() or 'unable to extract title' in str(e).lower() or isinstance(e, AttributeError)):
+            print(f" [+] Attempting manual XHamster extraction...")
+            try:
+                import requests
+                import re
+                
+                # Get page content
+                response = requests.get(url, 
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    },
+                    timeout=30)
+                
+                # Extract M3U8 video URL patterns from XHamster
+                m3u8_patterns = [
+                    r'video-cf\.xhcdn\.com[^"\']*\.m3u8[^"\']*',
+                    r'preload[^>]*href=["\']([^"\']*\.m3u8[^"\']*)["\']',
+                    r'"file"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+                ]
+                
+                video_url = None
+                for pattern in m3u8_patterns:
+                    matches = re.findall(pattern, response.text, re.IGNORECASE)
+                    if matches:
+                        video_url = matches[0] if isinstance(matches[0], str) else matches[0]
+                        # Ensure URL is properly formatted
+                        if not video_url.startswith('http'):
+                            video_url = 'https://' + video_url
+                        break
+                
+                # Extract title from page
+                title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
+                video_title = "XHamster_Video"
+                if title_match:
+                    title = title_match.group(1)
+                    # Clean title for filename
+                    video_title = utilities.clean_video_title(title.split(' - ')[0])
+                
+                if video_url:
+                    print(f" [+] Found direct M3U8 URL, downloading...")
+                    
+                    # Create options for M3U8 download
+                    direct_opts = {
+                        'outtmpl': os.path.join(download_path, f'{video_title}.%(ext)s'),
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Referer': 'https://xhamster.com/',
+                        }
+                    }
+                    
+                    with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
+                        direct_ydl.download([video_url])
+                    
+                    print(f" [+] Manual XHamster extraction successful!")
+                    return True
+                else:
+                    print(f" [!] Could not find M3U8 URL in page content")
+                    
+            except Exception as manual_e:
+                print(f" [!] Manual XHamster extraction failed: {manual_e}")
+        
         # Try manual extraction for Eporner if the built-in extractor fails
-        if 'eporner.com' in url and ('Unable to extract hash' in str(e) or isinstance(e, AttributeError)):
+        elif 'eporner.com' in url and ('Unable to extract hash' in str(e) or isinstance(e, AttributeError)):
             print(f" [+] Attempting manual Eporner extraction...")
             try:
                 import requests

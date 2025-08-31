@@ -1919,8 +1919,75 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     
             except yt_dlp.utils.ExtractorError as e:
                 print(f" [!] Extractor error: {e}")
+                # Try fallback approach for XHamster
+                if 'xhamster.com' in progress.url and ('unable to download video data' in str(e).lower() or 'unable to extract title' in str(e).lower()):
+                    print(f" [+] Attempting manual XHamster extraction...")
+                    try:
+                        import requests
+                        import re
+                        
+                        # Get page content
+                        response = requests.get(progress.url, 
+                            headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                            },
+                            timeout=30)
+                        
+                        # Extract M3U8 video URL patterns from XHamster
+                        m3u8_patterns = [
+                            r'video-cf\.xhcdn\.com[^"\']*\.m3u8[^"\']*',
+                            r'preload[^>]*href=["\']([^"\']*\.m3u8[^"\']*)["\']',
+                            r'"file"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+                        ]
+                        
+                        video_url = None
+                        for pattern in m3u8_patterns:
+                            matches = re.findall(pattern, response.text, re.IGNORECASE)
+                            if matches:
+                                video_url = matches[0] if isinstance(matches[0], str) else matches[0]
+                                # Ensure URL is properly formatted
+                                if not video_url.startswith('http'):
+                                    video_url = 'https://' + video_url
+                                break
+                        
+                        # Extract title from page
+                        title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
+                        video_title = "XHamster_Video"
+                        if title_match:
+                            title = title_match.group(1)
+                            # Clean title for filename
+                            video_title = utilities.clean_video_title(title.split(' - ')[0])
+                            progress.title = video_title  # Update progress title
+                        
+                        if video_url:
+                            print(f" [+] Found direct M3U8 URL, downloading...")
+                            
+                            # Create options for M3U8 download
+                            direct_opts = {
+                                'outtmpl': os.path.join(config.get_video_download_path(), f'{video_title}.%(ext)s'),
+                                'progress_hooks': [lambda d: self.progress_hook(d, progress)],
+                                'http_headers': {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                    'Referer': 'https://xhamster.com/',
+                                }
+                            }
+                            
+                            with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
+                                direct_ydl.extract_info(video_url, download=True)
+                            
+                            print(f" [+] Manual XHamster extraction successful!")
+                            return  # Success, exit the function
+                        else:
+                            print(f" [!] Could not find M3U8 URL in page content")
+                            
+                    except Exception as manual_e:
+                        print(f" [!] Manual XHamster extraction failed: {manual_e}")
+                        # Continue to try other fallbacks
+                
                 # Try fallback approach for Pornhub
-                if 'pornhub.com' in progress.url and 'Unable to extract title' in str(e):
+                elif 'pornhub.com' in progress.url and 'Unable to extract title' in str(e):
                     print(f" [+] Attempting Pornhub fallback extraction...")
                     try:
                         fallback_opts = {
@@ -1944,6 +2011,76 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             return  # Success, exit the function
                     except Exception as fallback_e:
                         print(f" [!] Fallback also failed: {fallback_e}")
+                        raise e  # Raise original error
+                else:
+                    raise
+            except yt_dlp.utils.DownloadError as e:
+                print(f" [!] Download error: {e}")
+                # Try manual extraction for XHamster on download errors (like HTTP 404)
+                if 'xhamster.com' in progress.url and ('unable to download video data' in str(e).lower() or 'http error 404' in str(e).lower()):
+                    print(f" [+] Attempting manual XHamster extraction for download error...")
+                    try:
+                        import requests
+                        import re
+                        
+                        # Get page content
+                        response = requests.get(progress.url, 
+                            headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                            },
+                            timeout=30)
+                        
+                        # Extract M3U8 video URL patterns from XHamster
+                        m3u8_patterns = [
+                            r'video-cf\.xhcdn\.com[^"\']*\.m3u8[^"\']*',
+                            r'preload[^>]*href=["\']([^"\']*\.m3u8[^"\']*)["\']',
+                            r'"file"\s*:\s*"([^"]+\.m3u8[^"]*)"',
+                        ]
+                        
+                        video_url = None
+                        for pattern in m3u8_patterns:
+                            matches = re.findall(pattern, response.text, re.IGNORECASE)
+                            if matches:
+                                video_url = matches[0] if isinstance(matches[0], str) else matches[0]
+                                # Ensure URL is properly formatted
+                                if not video_url.startswith('http'):
+                                    video_url = 'https://' + video_url
+                                break
+                        
+                        # Extract title from page
+                        title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
+                        video_title = "XHamster_Video"
+                        if title_match:
+                            title = title_match.group(1)
+                            # Clean title for filename
+                            video_title = utilities.clean_video_title(title.split(' - ')[0])
+                            progress.title = video_title  # Update progress title
+                        
+                        if video_url:
+                            print(f" [+] Found direct M3U8 URL, downloading...")
+                            
+                            # Create options for M3U8 download
+                            direct_opts = {
+                                'outtmpl': os.path.join(config.get_video_download_path(), f'{video_title}.%(ext)s'),
+                                'progress_hooks': [lambda d: self.progress_hook(d, progress)],
+                                'http_headers': {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                    'Referer': 'https://xhamster.com/',
+                                }
+                            }
+                            
+                            with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
+                                direct_ydl.extract_info(video_url, download=True)
+                            
+                            print(f" [+] Manual XHamster extraction successful!")
+                            return  # Success, exit the function
+                        else:
+                            print(f" [!] Could not find M3U8 URL in page content")
+                            
+                    except Exception as manual_e:
+                        print(f" [!] Manual XHamster extraction failed: {manual_e}")
                         raise e  # Raise original error
                 else:
                     raise
