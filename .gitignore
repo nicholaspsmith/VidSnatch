@@ -53,6 +53,7 @@ downloads/
 .logs/
 VidSnatch.app/
 *.command
+metadata_backup.json
 
 # Temporary files
 *.tmp

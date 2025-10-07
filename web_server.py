@@ -3611,7 +3611,35 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     outline: none !important;
                     border-color: var(--btn-bg) !important;
                 }}
-                
+
+                .name-display {{
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }}
+
+                .person-name-link {{
+                    color: #247bff;
+                    text-decoration: none;
+                    font-weight: bold;
+                    font-size: 14px;
+                }}
+
+                .person-name-link:hover {{
+                    text-decoration: underline;
+                }}
+
+                .edit-name-icon {{
+                    cursor: pointer;
+                    opacity: 0.6;
+                    font-size: 14px;
+                    transition: opacity 0.2s ease;
+                }}
+
+                .edit-name-icon:hover {{
+                    opacity: 1;
+                }}
+
                 .file-actions {{
                     display: flex;
                     gap: 5px;
@@ -4493,9 +4521,74 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             }} else {{
                                 delete serverMetadata.person_names[filename];
                             }}
+                            // Update the display
+                            updatePersonNameDisplay(filename);
                         }}
                     }} catch (error) {{
                         console.error('Error saving person name:', error);
+                    }}
+                }}
+
+                function editPersonName(filename) {{
+                    const cell = document.querySelector(`.person-name-cell[data-filename="${{filename}}"]`);
+                    if (!cell) return;
+
+                    const currentName = getPersonName(filename) || '';
+
+                    cell.innerHTML = `
+                        <input type="text" class="name-input editing" value="${{currentName}}"
+                               placeholder="Enter name..."
+                               onclick="event.stopPropagation()"
+                               onkeydown="handlePersonNameKeydown(event, '${{filename.replace(/'/g, "\\\\'")}}')"
+                               onblur="handlePersonNameBlur(event, '${{filename.replace(/'/g, "\\\\'")}}')"
+                               autofocus>
+                    `;
+
+                    // Focus the input
+                    const input = cell.querySelector('.name-input');
+                    if (input) {{
+                        input.focus();
+                        input.select();
+                    }}
+                }}
+
+                function handlePersonNameKeydown(event, filename) {{
+                    if (event.key === 'Enter') {{
+                        event.preventDefault();
+                        const input = event.target;
+                        savePersonName(filename, input.value);
+                    }} else if (event.key === 'Escape') {{
+                        event.preventDefault();
+                        updatePersonNameDisplay(filename);
+                    }}
+                }}
+
+                function handlePersonNameBlur(event, filename) {{
+                    const input = event.target;
+                    savePersonName(filename, input.value);
+                }}
+
+                function updatePersonNameDisplay(filename) {{
+                    const cell = document.querySelector(`.person-name-cell[data-filename="${{filename}}"]`);
+                    if (!cell) return;
+
+                    const personName = getPersonName(filename) || '';
+
+                    if (personName) {{
+                        cell.innerHTML = `
+                            <div class="name-display">
+                                <a href="https://www.fuq.com/search/${{encodeURIComponent(personName)}}/" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
+                                <span class="edit-name-icon" onclick="editPersonName('${{filename.replace(/'/g, "\\\\'")}}')" title="Edit name">✏️</span>
+                            </div>
+                        `;
+                    }} else {{
+                        cell.innerHTML = `
+                            <input type="text" class="name-input" value=""
+                                   placeholder="Enter name..."
+                                   onclick="event.stopPropagation()"
+                                   onkeydown="handlePersonNameKeydown(event, '${{filename.replace(/'/g, "\\\\'")}}')"
+                                   onblur="handlePersonNameBlur(event, '${{filename.replace(/'/g, "\\\\'")}}')">
+                        `;
                     }}
                 }}
                 
@@ -4954,11 +5047,19 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                                     <span class="file-name-text" title="${{file.name}}">${{file.name.replace(/\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v|part|ytdl|temp)$/i, '')}}</span>
                                                 </div>
                                             </td>
-                                            <td>
-                                                <input type="text" class="name-input" value="${{personName}}" 
-                                                       placeholder="Enter name..." 
-                                                       onclick="event.stopPropagation()" 
-                                                       onchange="savePersonName('${{escapeFilename(file.name)}}', this.value)">
+                                            <td class="person-name-cell" data-filename="${{file.name}}" onclick="event.stopPropagation()">
+                                                ${{personName ? `
+                                                    <div class="name-display">
+                                                        <a href="https://www.fuq.com/search/${{encodeURIComponent(personName)}}/" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
+                                                        <span class="edit-name-icon" onclick="editPersonName('${{escapeFilename(file.name)}}')" title="Edit name">✏️</span>
+                                                    </div>
+                                                ` : `
+                                                    <input type="text" class="name-input" value=""
+                                                           placeholder="Enter name..."
+                                                           onclick="event.stopPropagation()"
+                                                           onkeydown="handlePersonNameKeydown(event, '${{escapeFilename(file.name)}}')"
+                                                           onblur="handlePersonNameBlur(event, '${{escapeFilename(file.name)}}')">
+                                                `}}
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>
@@ -5279,11 +5380,19 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                                     <span class="file-name-text" title="${{file.name}}">${{file.name.replace(/\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v)$/i, '')}}</span>
                                                 </div>
                                             </td>
-                                            <td>
-                                                <input type="text" class="name-input" value="${{personName}}"
-                                                       placeholder="Enter name..."
-                                                       onclick="event.stopPropagation()"
-                                                       onchange="savePersonName('${{escapeFilename(file.name)}}', this.value)">
+                                            <td class="person-name-cell" data-filename="${{file.name}}" onclick="event.stopPropagation()">
+                                                ${{personName ? `
+                                                    <div class="name-display">
+                                                        <a href="https://www.fuq.com/search/${{encodeURIComponent(personName)}}/" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
+                                                        <span class="edit-name-icon" onclick="editPersonName('${{escapeFilename(file.name)}}')" title="Edit name">✏️</span>
+                                                    </div>
+                                                ` : `
+                                                    <input type="text" class="name-input" value=""
+                                                           placeholder="Enter name..."
+                                                           onclick="event.stopPropagation()"
+                                                           onkeydown="handlePersonNameKeydown(event, '${{escapeFilename(file.name)}}')"
+                                                           onblur="handlePersonNameBlur(event, '${{escapeFilename(file.name)}}')">
+                                                `}}
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>
