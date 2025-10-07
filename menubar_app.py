@@ -171,15 +171,15 @@ class VidSnatchMenuBar:
                 os.chdir(self.install_dir)
                 # Use the virtual environment python
                 python_path = os.path.join(self.install_dir, "venv", "bin", "python3")
-                server_script = os.path.join(self.install_dir, "web_server.py")
-                
+                server_script = os.path.join(self.install_dir, "server_only.py")
+
                 self.server_process = subprocess.Popen(
                     [python_path, server_script],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     preexec_fn=os.setsid  # Create new process group
                 )
-                
+
                 # Wait a moment and verify server actually started
                 time.sleep(2)
                 if self.check_server_status():

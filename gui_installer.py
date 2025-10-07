@@ -52,6 +52,9 @@ class VidSnatchInstaller:
         # Track installation status
         self.is_installed = self.check_installation()
         self.update_status()
+
+        # Initialize metadata backup
+        self.metadata_backup = None
         
         # Show current status in output window
         if self.is_installed:
@@ -587,7 +590,7 @@ class VidSnatchInstaller:
         
         # Copy Python server files from current directory
         self.log_output("🐍 Installing Python server...")
-        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py', 'file_metadata.py']
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py', 'file_metadata.py', 'video_metadata.py']
         for file in server_files:
             src_path = os.path.join(self.current_dir, file)
             if os.path.exists(src_path):
@@ -727,11 +730,23 @@ python3 menubar_app.py
             except Exception as e:
                 self.log_output(f"⚠️ Could not auto-launch menu bar app: {e}")
                 self.log_output("📝 You can manually launch it from Applications folder")
-        
+
         time.sleep(2)
-            
+
+        # Restore metadata backup if it exists
+        if hasattr(self, 'metadata_backup') and self.metadata_backup:
+            try:
+                metadata_dir = os.path.join(self.install_dir, ".logs")
+                os.makedirs(metadata_dir, exist_ok=True)
+                metadata_file = os.path.join(metadata_dir, "video_metadata.json")
+                with open(metadata_file, 'w') as f:
+                    f.write(self.metadata_backup)
+                self.log_output("💾 Restored video metadata")
+            except Exception as e:
+                self.log_output(f"⚠️ Warning: Could not restore metadata: {e}")
+
         return True
-        
+
     def run_uninstall_steps(self):
         """Run the actual uninstallation steps"""
         # Stop all VidSnatch processes (URL tracker automatically persists incomplete downloads)
@@ -777,10 +792,24 @@ python3 menubar_app.py
         except:
             pass
             
+        # Backup metadata before removing installation directory
+        metadata_backup = None
+        metadata_file = os.path.join(self.install_dir, ".logs", "video_metadata.json")
+        if os.path.exists(metadata_file):
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata_backup = f.read()
+                self.log_output("💾 Backed up video metadata")
+            except Exception as e:
+                self.log_output(f"⚠️ Warning: Could not backup metadata: {e}")
+
         # Remove installation directory
         if os.path.exists(self.install_dir):
             shutil.rmtree(self.install_dir)
             self.log_output(f"✅ Removed {self.install_dir}")
+
+        # Store backup for reinstall
+        self.metadata_backup = metadata_backup
             
         # Remove app bundle
         app_path = os.path.expanduser("~/Applications/VidSnatch.app")
@@ -869,7 +898,7 @@ except Exception as e:
         
         # Copy Python server files from current directory
         print("🐍 Installing Python server...")
-        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py', 'file_metadata.py']
+        server_files = ['web_server.py', 'url_tracker.py', 'main.py', 'server_only.py', 'start_with_server.py', 'menubar_app.py', 'file_metadata.py', 'video_metadata.py']
         for file in server_files:
             src_path = os.path.join(self.current_dir, file)
             if os.path.exists(src_path):
@@ -997,14 +1026,26 @@ python3 menubar_app.py
         python_path = os.path.join(venv_path, "bin", "python3")
         
         if os.path.exists(launch_script):
-            subprocess.Popen([python_path, launch_script], 
+            subprocess.Popen([python_path, launch_script],
                            cwd=self.install_dir,
-                           stdout=subprocess.DEVNULL, 
+                           stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL)
             time.sleep(2)
-            
+
+        # Restore metadata backup if it exists
+        if hasattr(self, 'metadata_backup') and self.metadata_backup:
+            try:
+                metadata_dir = os.path.join(self.install_dir, ".logs")
+                os.makedirs(metadata_dir, exist_ok=True)
+                metadata_file = os.path.join(metadata_dir, "video_metadata.json")
+                with open(metadata_file, 'w') as f:
+                    f.write(self.metadata_backup)
+                print("💾 Restored video metadata")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not restore metadata: {e}")
+
         return True
-        
+
     def run_uninstall_steps_cli(self):
         """CLI version of uninstallation steps with print output"""
         # Stop all VidSnatch processes (URL tracker automatically persists incomplete downloads)
@@ -1046,10 +1087,24 @@ python3 menubar_app.py
         except:
             pass
             
+        # Backup metadata before removing installation directory
+        metadata_backup = None
+        metadata_file = os.path.join(self.install_dir, ".logs", "video_metadata.json")
+        if os.path.exists(metadata_file):
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata_backup = f.read()
+                print("💾 Backed up video metadata")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not backup metadata: {e}")
+
         # Remove installation directory
         if os.path.exists(self.install_dir):
             shutil.rmtree(self.install_dir)
             print(f"✅ Removed {self.install_dir}")
+
+        # Store backup for reinstall
+        self.metadata_backup = metadata_backup
             
         # Remove app bundle
         app_path = os.path.expanduser("~/Applications/VidSnatch.app")
@@ -1077,6 +1132,7 @@ class CommandLineInstaller:
     def __init__(self):
         self.install_dir = os.path.expanduser("~/Applications/VidSnatch")
         self.current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.metadata_backup = None
         
     def run(self):
         print("\n🎬 VidSnatch Manager (Command Line)")

@@ -2,7 +2,7 @@
 
 // Constants
 const CONFIG = {
-  SERVER_URL: 'http://localhost:8080',
+  SERVER_URL: 'http://0.0.0.0:8080',
   HISTORY_SEARCH_DAYS: 30,
   MAX_HISTORY_RESULTS: 3000,
   MAX_SUGGESTED_RESULTS: 10000,

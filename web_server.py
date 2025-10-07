@@ -19,11 +19,13 @@ import modules.config as config
 import modules.utilities as utilities
 from url_tracker import init_tracker, get_tracker
 from file_metadata import get_file_metadata
+from video_metadata import get_video_metadata
 
 # Check for yt-dlp dependency
 while True:
     try:
         import yt_dlp  # noqa: F401
+
         break
     except ImportError as e:
         package_name = str(e).split("'")[1] if "'" in str(e) else str(e)[17:-1]
@@ -40,10 +42,11 @@ download_lock = threading.Lock()
 
 # Failed downloads persistence
 failed_downloads = {}
-failed_downloads_file = '.logs/failed_downloads.json'
+failed_downloads_file = ".logs/failed_downloads.json"
 
 # Active downloads persistence
-active_downloads_file = '.logs/active_downloads.json'
+active_downloads_file = ".logs/active_downloads.json"
+
 
 def save_active_downloads():
     """Save active downloads to persistent storage (only metadata, not the actual download state)."""
@@ -53,164 +56,186 @@ def save_active_downloads():
         active_data = {}
         for download_id, progress in active_downloads.items():
             # Only save downloads that are actually in progress
-            if progress.status in ['preparing', 'downloading', 'processing']:
+            if progress.status in ["preparing", "downloading", "processing"]:
                 active_data[download_id] = {
-                    'title': progress.title,
-                    'url': progress.url,
-                    'status': progress.status,
-                    'percent': progress.percent,
-                    'start_time': progress.start_time
+                    "title": progress.title,
+                    "url": progress.url,
+                    "status": progress.status,
+                    "percent": progress.percent,
+                    "start_time": progress.start_time,
                 }
-        with open(active_downloads_file, 'w') as f:
+        with open(active_downloads_file, "w") as f:
             json.dump(active_data, f, indent=2)
     except Exception as e:
         print(f" [!] Error saving active downloads: {e}")
+
 
 def load_active_downloads():
     """Load active downloads from persistent storage and mark as interrupted."""
     global active_downloads
     try:
         if os.path.exists(active_downloads_file):
-            with open(active_downloads_file, 'r') as f:
+            with open(active_downloads_file, "r") as f:
                 saved_downloads = json.load(f)
-                
+
                 if saved_downloads:
-                    print(f" [!] Found {len(saved_downloads)} interrupted downloads from previous session")
-                    
+                    print(
+                        f" [!] Found {len(saved_downloads)} interrupted downloads from previous session"
+                    )
+
                     # Convert saved downloads to failed downloads since they were interrupted
                     for download_id, download_info in saved_downloads.items():
                         # Add to failed downloads so they can be retried
                         failed_downloads[download_id] = {
-                            'title': download_info['title'],
-                            'url': download_info['url'],
-                            'error': 'Download interrupted by server restart',
-                            'retry_count': 0,
-                            'open_folder': True
+                            "title": download_info["title"],
+                            "url": download_info["url"],
+                            "error": "Download interrupted by server restart",
+                            "retry_count": 0,
+                            "open_folder": True,
                         }
-                    
+
                     # Save the failed downloads
                     save_failed_downloads()
-                    print(f" [+] Moved {len(saved_downloads)} interrupted downloads to failed list for retry")
-                    
+                    print(
+                        f" [+] Moved {len(saved_downloads)} interrupted downloads to failed list for retry"
+                    )
+
                     # Clear the active downloads file
-                    with open(active_downloads_file, 'w') as f:
+                    with open(active_downloads_file, "w") as f:
                         json.dump({}, f)
     except Exception as e:
         print(f" [!] Error loading active downloads: {e}")
+
 
 def load_failed_downloads():
     """Load failed downloads from persistent storage."""
     global failed_downloads
     try:
         if os.path.exists(failed_downloads_file):
-            with open(failed_downloads_file, 'r') as f:
+            with open(failed_downloads_file, "r") as f:
                 failed_downloads = json.load(f)
-                print(f" [+] Loaded {len(failed_downloads)} failed downloads from storage")
+                print(
+                    f" [+] Loaded {len(failed_downloads)} failed downloads from storage"
+                )
     except Exception as e:
         print(f" [!] Error loading failed downloads: {e}")
         failed_downloads = {}
+
 
 def save_failed_downloads():
     """Save failed downloads to persistent storage."""
     try:
         os.makedirs(os.path.dirname(failed_downloads_file), exist_ok=True)
-        with open(failed_downloads_file, 'w') as f:
+        with open(failed_downloads_file, "w") as f:
             json.dump(failed_downloads, f, indent=2)
     except Exception as e:
         print(f" [!] Error saving failed downloads: {e}")
 
+
 def add_failed_download(download_id, download_data):
     """Add a failed download to the persistent store with enhanced logging."""
     global failed_downloads
-    
+
     # Extract URL components for debugging
-    url = download_data.get('url', '')
+    url = download_data.get("url", "")
     try:
         from urllib.parse import urlparse
+
         parsed_url = urlparse(url)
         domain = parsed_url.netloc
         path = parsed_url.path
     except Exception:
-        domain = 'unknown'
-        path = 'unknown'
-    
+        domain = "unknown"
+        path = "unknown"
+
     # Create enhanced failed download entry
     failed_downloads[download_id] = {
-        'id': download_id,
-        'url': url,
-        'domain': domain,
-        'path': path,
-        'title': download_data.get('title'),
-        'error': download_data.get('error'),
-        'failed_at': time.time(),
-        'failed_at_human': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-        'retry_count': download_data.get('retry_count', 0),
-        'open_folder': download_data.get('open_folder', True),
-        'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'python_version': sys.version,
-        'yt_dlp_version': getattr(yt_dlp, 'version', {}).get('version', 'unknown') if 'yt_dlp' in globals() else 'unknown'
+        "id": download_id,
+        "url": url,
+        "domain": domain,
+        "path": path,
+        "title": download_data.get("title"),
+        "error": download_data.get("error"),
+        "failed_at": time.time(),
+        "failed_at_human": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+        "retry_count": download_data.get("retry_count", 0),
+        "open_folder": download_data.get("open_folder", True),
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "python_version": sys.version,
+        "yt_dlp_version": getattr(yt_dlp, "version", {}).get("version", "unknown")
+        if "yt_dlp" in globals()
+        else "unknown",
     }
-    
+
     # Enhanced logging for developers
     try:
-        os.makedirs('.logs', exist_ok=True)
-        developer_log_file = '.logs/failed_downloads_detailed.json'
-        
+        os.makedirs(".logs", exist_ok=True)
+        developer_log_file = ".logs/failed_downloads_detailed.json"
+
         # Load existing detailed logs
         detailed_logs = []
         if os.path.exists(developer_log_file):
             try:
-                with open(developer_log_file, 'r') as f:
+                with open(developer_log_file, "r") as f:
                     detailed_logs = json.load(f)
             except Exception:
                 detailed_logs = []
-        
+
         # Add detailed entry for developers
         detailed_entry = {
-            'download_id': download_id,
-            'timestamp': time.time(),
-            'timestamp_human': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-            'url': url,
-            'domain': domain,
-            'title': download_data.get('title'),
-            'error_message': download_data.get('error'),
-            'retry_count': download_data.get('retry_count', 0),
-            'system_info': {
-                'python_version': sys.version,
-                'platform': sys.platform,
-                'yt_dlp_version': getattr(yt_dlp, 'version', {}).get('version', 'unknown') if 'yt_dlp' in globals() else 'unknown'
+            "download_id": download_id,
+            "timestamp": time.time(),
+            "timestamp_human": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "url": url,
+            "domain": domain,
+            "title": download_data.get("title"),
+            "error_message": download_data.get("error"),
+            "retry_count": download_data.get("retry_count", 0),
+            "system_info": {
+                "python_version": sys.version,
+                "platform": sys.platform,
+                "yt_dlp_version": getattr(yt_dlp, "version", {}).get(
+                    "version", "unknown"
+                )
+                if "yt_dlp" in globals()
+                else "unknown",
             },
-            'debugging_info': {
-                'url_path': path,
-                'url_scheme': parsed_url.scheme if 'parsed_url' in locals() else 'unknown',
-                'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-            }
+            "debugging_info": {
+                "url_path": path,
+                "url_scheme": parsed_url.scheme
+                if "parsed_url" in locals()
+                else "unknown",
+                "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
         }
-        
+
         detailed_logs.append(detailed_entry)
-        
+
         # Keep only the last 50 detailed logs to prevent file from growing too large
         if len(detailed_logs) > 50:
             detailed_logs = detailed_logs[-50:]
-        
+
         # Save detailed logs
-        with open(developer_log_file, 'w') as f:
+        with open(developer_log_file, "w") as f:
             json.dump(detailed_logs, f, indent=2)
-        
+
         # Also log to server log with enhanced details
-        server_logger.error(f"DOWNLOAD FAILED: {download_data.get('title')} | "
-                           f"Domain: {domain} | "
-                           f"Error: {download_data.get('error')} | "
-                           f"Retry #{download_data.get('retry_count', 0)} | "
-                           f"URL: {url}")
-        
+        server_logger.error(
+            f"DOWNLOAD FAILED: {download_data.get('title')} | "
+            f"Domain: {domain} | "
+            f"Error: {download_data.get('error')} | "
+            f"Retry #{download_data.get('retry_count', 0)} | "
+            f"URL: {url}"
+        )
+
         print(f" [!] ENHANCED LOGGING: Failed download details saved for developers")
-        
+
     except Exception as e:
         print(f" [!] Error in enhanced logging: {e}")
         server_logger.error(f"Error in enhanced logging: {e}")
-    
+
     save_failed_downloads()
+
 
 def remove_failed_download(download_id):
     """Remove a failed download from the persistent store."""
@@ -221,90 +246,109 @@ def remove_failed_download(download_id):
         return True
     return False
 
+
 def find_existing_failed_download(url):
     """Check if a URL already exists in failed downloads."""
     global failed_downloads
     for download_id, failed_download in failed_downloads.items():
-        if failed_download.get('url') == url:
+        if failed_download.get("url") == url:
             return download_id, failed_download
     return None, None
+
 
 def log_duplicate_attempt(url, title, existing_download_id, existing_download):
     """Log a duplicate download attempt for developer analysis."""
     try:
-        os.makedirs('.logs', exist_ok=True)
-        duplicate_log_file = '.logs/duplicate_attempts.json'
-        
+        os.makedirs(".logs", exist_ok=True)
+        duplicate_log_file = ".logs/duplicate_attempts.json"
+
         # Load existing duplicate attempts
         duplicate_attempts = []
         if os.path.exists(duplicate_log_file):
             try:
-                with open(duplicate_log_file, 'r') as f:
+                with open(duplicate_log_file, "r") as f:
                     duplicate_attempts = json.load(f)
             except Exception:
                 duplicate_attempts = []
-        
+
         # Add new duplicate attempt
         duplicate_entry = {
-            'timestamp': time.time(),
-            'timestamp_human': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
-            'attempted_url': url,
-            'attempted_title': title,
-            'existing_download_id': existing_download_id,
-            'existing_title': existing_download.get('title'),
-            'existing_error': existing_download.get('error'),
-            'existing_failed_at': existing_download.get('failed_at'),
-            'existing_retry_count': existing_download.get('retry_count', 0)
+            "timestamp": time.time(),
+            "timestamp_human": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "attempted_url": url,
+            "attempted_title": title,
+            "existing_download_id": existing_download_id,
+            "existing_title": existing_download.get("title"),
+            "existing_error": existing_download.get("error"),
+            "existing_failed_at": existing_download.get("failed_at"),
+            "existing_retry_count": existing_download.get("retry_count", 0),
         }
-        
+
         duplicate_attempts.append(duplicate_entry)
-        
+
         # Keep only the last 100 attempts to prevent file from growing too large
         if len(duplicate_attempts) > 100:
             duplicate_attempts = duplicate_attempts[-100:]
-        
+
         # Save duplicate attempts log
-        with open(duplicate_log_file, 'w') as f:
+        with open(duplicate_log_file, "w") as f:
             json.dump(duplicate_attempts, f, indent=2)
-        
+
         # Also log to server log
-        server_logger.warning(f"DUPLICATE ATTEMPT: URL {url} already failed previously. "
-                             f"Original error: {existing_download.get('error')} "
-                             f"Retry count: {existing_download.get('retry_count', 0)}")
-        
+        server_logger.warning(
+            f"DUPLICATE ATTEMPT: URL {url} already failed previously. "
+            f"Original error: {existing_download.get('error')} "
+            f"Retry count: {existing_download.get('retry_count', 0)}"
+        )
+
         print(f" [!] DUPLICATE: URL already in failed downloads list")
         print(f" [!] Original title: {existing_download.get('title')}")
         print(f" [!] Original error: {existing_download.get('error')}")
         print(f" [!] Failed {existing_download.get('retry_count', 0)} times")
-        
+
     except Exception as e:
         print(f" [!] Error logging duplicate attempt: {e}")
         server_logger.error(f"Error logging duplicate attempt: {e}")
+
 
 def get_partial_files(download_id, title):
     """Get partial files (.part, .ytdl) for a download."""
     try:
         download_path = config.get_video_download_path()
         partial_files = []
-        
+
         # Look for files with the download_id or title in name
         for file_name in os.listdir(download_path):
-            if (download_id in file_name or 
-                (title and any(word in file_name.lower() for word in title.lower().split() if len(word) > 3)) and
-                (file_name.endswith('.part') or file_name.endswith('.ytdl') or file_name.endswith('.temp'))):
+            if (
+                download_id in file_name
+                or (
+                    title
+                    and any(
+                        word in file_name.lower()
+                        for word in title.lower().split()
+                        if len(word) > 3
+                    )
+                )
+                and (
+                    file_name.endswith(".part")
+                    or file_name.endswith(".ytdl")
+                    or file_name.endswith(".temp")
+                )
+            ):
                 partial_files.append(os.path.join(download_path, file_name))
-        
+
         return partial_files
     except Exception as e:
         print(f" [!] Error finding partial files: {e}")
         return []
+
 
 def cleanup_partial_files(download_id, title):
     """Remove partial files for a download."""
     try:
         partial_files = get_partial_files(download_id, title)
         removed_files = []
-        
+
         for file_path in partial_files:
             try:
                 os.remove(file_path)
@@ -312,37 +356,40 @@ def cleanup_partial_files(download_id, title):
                 print(f" [+] Removed partial file: {os.path.basename(file_path)}")
             except Exception as e:
                 print(f" [!] Error removing {file_path}: {e}")
-        
+
         return removed_files
     except Exception as e:
         print(f" [!] Error cleaning up partial files: {e}")
         return []
 
+
 def find_matching_failed_download(filename):
     """Find a failed download that matches a partial file using multiple matching strategies."""
     global failed_downloads
-    
+
     # Clean filename for comparison (remove extensions and special chars)
-    clean_filename = filename.replace('.part', '').replace('.ytdl', '').replace('.temp', '').lower()
-    clean_filename = re.sub(r'[^\w\s-]', '', clean_filename).strip()
-    
+    clean_filename = (
+        filename.replace(".part", "").replace(".ytdl", "").replace(".temp", "").lower()
+    )
+    clean_filename = re.sub(r"[^\w\s-]", "", clean_filename).strip()
+
     best_match = None
     best_similarity = 0
-    
+
     print(f" [+] Searching for match to: '{clean_filename}'")
-    
+
     for download_id, failed_download in failed_downloads.items():
         # Clean the failed download title for comparison
-        clean_title = failed_download['title'].lower()
-        clean_title = re.sub(r'[^\w\s-]', '', clean_title).strip()
-        
+        clean_title = failed_download["title"].lower()
+        clean_title = re.sub(r"[^\w\s-]", "", clean_title).strip()
+
         print(f" [+] Comparing with: '{clean_title}'")
-        
+
         # Strategy 1: Exact match (after cleaning)
         if clean_filename == clean_title:
             print(f" [+] Exact match found!")
             return (download_id, failed_download)
-        
+
         # Strategy 2: Substring containment (bidirectional)
         if clean_title in clean_filename or clean_filename in clean_title:
             similarity = 0.99
@@ -351,96 +398,101 @@ def find_matching_failed_download(filename):
             # Strategy 3: Word-based similarity
             filename_words = set(clean_filename.split())
             title_words = set(clean_title.split())
-            
+
             if not filename_words or not title_words:
                 continue
-                
+
             # Calculate Jaccard similarity (intersection over union)
             intersection = len(filename_words.intersection(title_words))
             union = len(filename_words.union(title_words))
             similarity = intersection / union if union > 0 else 0
-            
+
             print(f" [+] Word similarity: {similarity:.2f}")
-        
+
         # Strategy 4: Check if most words from filename are in title (lowered threshold)
         if similarity == 0:  # Only if no other similarity found
             filename_words = set(clean_filename.split())
             title_words = set(clean_title.split())
-            
+
             if filename_words and title_words:
                 # Check what percentage of filename words are in title
                 words_in_title = len(filename_words.intersection(title_words))
-                filename_coverage = words_in_title / len(filename_words) if filename_words else 0
-                
+                filename_coverage = (
+                    words_in_title / len(filename_words) if filename_words else 0
+                )
+
                 # If 80%+ of filename words are in title, consider it a match
                 if filename_coverage >= 0.8:
                     similarity = 0.85
                     print(f" [+] High filename coverage match: {filename_coverage:.2f}")
-        
+
         # Update best match if this is better (lowered threshold to 80%)
         if similarity > best_similarity and similarity >= 0.80:
             best_similarity = similarity
             best_match = (download_id, failed_download)
             print(f" [+] New best match: {similarity:.2f}")
-    
+
     if best_match:
         print(f" [+] Final match selected with similarity: {best_similarity:.2f}")
     else:
         print(f" [-] No match found (threshold: 0.80)")
-        
+
     return best_match
+
 
 def find_matching_active_download(filename):
     """Find an active download that matches a partial file using multiple matching strategies."""
     global active_downloads
-    
+
     # Clean filename for comparison (remove extensions and special chars)
-    clean_filename = filename.replace('.part', '').replace('.ytdl', '').replace('.temp', '').lower()
-    clean_filename = re.sub(r'[^\w\s-]', '', clean_filename).strip()
-    
+    clean_filename = (
+        filename.replace(".part", "").replace(".ytdl", "").replace(".temp", "").lower()
+    )
+    clean_filename = re.sub(r"[^\w\s-]", "", clean_filename).strip()
+
     best_match = None
     best_similarity = 0
-    
+
     print(f" [+] Searching active downloads for match to: '{clean_filename}'")
-    
+
     # Load active downloads if they exist
     try:
         if os.path.exists(active_downloads_file):
-            with open(active_downloads_file, 'r') as f:
+            with open(active_downloads_file, "r") as f:
                 active_downloads_data = json.load(f)
         else:
             active_downloads_data = {}
     except Exception as e:
         print(f"Warning: Could not load active downloads data: {e}")
         active_downloads_data = {}
-    
+
     # Also check currently active downloads in memory
     all_active = {}
     all_active.update(active_downloads_data)
     with download_lock:
         for did, progress in active_downloads.items():
             all_active[did] = {
-                'url': progress.url,
-                'title': progress.title,
-                'retry_count': progress.retry_count,
-                'open_folder': progress.open_folder
+                "url": progress.url,
+                "title": progress.title,
+                "retry_count": progress.retry_count,
+                "open_folder": progress.open_folder,
             }
-    
+
     for download_id, active_download in all_active.items():
-        if not active_download.get('url'):
+        if not active_download.get("url"):
             continue
-            
+
         # Clean the active download title for comparison
-        clean_title = active_download.get('title', '').lower()
-        clean_title = re.sub(r'[^\w\s-]', '', clean_title).strip()
-        
+        clean_title = active_download.get("title", "").lower()
+        clean_title = re.sub(r"[^\w\s-]", "", clean_title).strip()
+
         print(f" [+] Comparing with active: '{clean_title}'")
-        
+
         # Strategy 1: Exact match (after cleaning)
         if clean_filename == clean_title:
             print(f" [+] Exact match found in active downloads!")
             return (download_id, active_download)
-        
+
         # Strategy 2: Substring containment (bidirectional)
         if clean_title in clean_filename or clean_filename in clean_title:
             similarity = 0.99
@@ -449,69 +501,101 @@ def find_matching_active_download(filename):
             # Strategy 3: Word-based similarity
             filename_words = set(clean_filename.split())
             title_words = set(clean_title.split())
-            
+
             if not filename_words or not title_words:
                 continue
-                
+
             # Calculate Jaccard similarity (intersection over union)
             intersection = len(filename_words.intersection(title_words))
             union = len(filename_words.union(title_words))
             similarity = intersection / union if union > 0 else 0
-            
+
             print(f" [+] Word similarity: {similarity:.2f}")
-        
+
         # Strategy 4: Check if most words from filename are in title
         if similarity == 0:  # Only if no other similarity found
             filename_words = set(clean_filename.split())
             title_words = set(clean_title.split())
-            
+
             if filename_words and title_words:
                 matching_words = len(filename_words.intersection(title_words))
-                if matching_words >= len(filename_words) * 0.5:  # At least 50% of words match
+                if (
+                    matching_words >= len(filename_words) * 0.5
+                ):  # At least 50% of words match
                     similarity = 0.85
-                    print(f" [+] Partial word match: {matching_words}/{len(filename_words)} words")
-        
+                    print(
+                        f" [+] Partial word match: {matching_words}/{len(filename_words)} words"
+                    )
+
         # Use same lowered threshold as failed downloads (0.80)
         if similarity >= 0.80 and similarity > best_similarity:
             best_similarity = similarity
             best_match = (download_id, active_download)
             print(f" [+] New best active match: {similarity:.2f}")
-    
+
     if best_match:
-        print(f" [+] Final active match selected with similarity: {best_similarity:.2f}")
+        print(
+            f" [+] Final active match selected with similarity: {best_similarity:.2f}"
+        )
     else:
         print(f" [-] No active match found (threshold: 0.80)")
-        
+
     return best_match
+
 
 def get_video_duration(file_path):
     """Get video duration in seconds using ffprobe or fallback methods."""
     try:
         # Try using ffprobe first (most accurate)
         import subprocess
-        result = subprocess.run([
-            'ffprobe', '-v', 'quiet', '-show_entries', 
-            'format=duration', '-of', 'csv=p=0', file_path
-        ], capture_output=True, text=True, timeout=10)
-        
+
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                file_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
         if result.returncode == 0 and result.stdout.strip():
             duration = float(result.stdout.strip())
             return round(duration)
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError, FileNotFoundError) as e:
+    except (
+        subprocess.SubprocessError,
+        subprocess.TimeoutExpired,
+        ValueError,
+        FileNotFoundError,
+    ) as e:
         pass
-    
+
     try:
         # Fallback: try mediainfo if available
-        result = subprocess.run([
-            'mediainfo', '--Inform=General;%Duration%', file_path
-        ], capture_output=True, text=True, timeout=10)
-        
+        result = subprocess.run(
+            ["mediainfo", "--Inform=General;%Duration%", file_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
         if result.returncode == 0 and result.stdout.strip():
             duration_ms = float(result.stdout.strip())
             return round(duration_ms / 1000)  # Convert ms to seconds
-    except (subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+    except (
+        subprocess.SubprocessError,
+        subprocess.TimeoutExpired,
+        ValueError,
+        FileNotFoundError,
+    ):
         pass
-    
+
     try:
         # Another fallback: try using file size estimation (very rough)
         # Most videos are roughly 1MB per minute for standard quality
@@ -523,8 +607,9 @@ def get_video_duration(file_path):
     except Exception as e:
         # Silently fail for duration parsing as it's non-critical
         pass
-    
+
     return None
+
 
 def auto_cleanup_matching_partial_files(completed_title):
     """Automatically clean up partial files that match a completed download."""
@@ -532,97 +617,116 @@ def auto_cleanup_matching_partial_files(completed_title):
         download_path = config.get_video_download_path()
         if not os.path.exists(download_path):
             return []
-            
+
         removed_files = []
         clean_completed_title = completed_title.lower()
-        clean_completed_title = re.sub(r'[^\w\s-]', '', clean_completed_title).strip()
-        
+        clean_completed_title = re.sub(r"[^\w\s-]", "", clean_completed_title).strip()
+
         for filename in os.listdir(download_path):
-            if filename.endswith('.part') or filename.endswith('.ytdl') or filename.endswith('.temp'):
+            if (
+                filename.endswith(".part")
+                or filename.endswith(".ytdl")
+                or filename.endswith(".temp")
+            ):
                 # Check if this partial file matches the completed download
-                clean_filename = filename.replace('.part', '').replace('.ytdl', '').replace('.temp', '').lower()
-                clean_filename = re.sub(r'[^\w\s-]', '', clean_filename).strip()
-                
+                clean_filename = (
+                    filename.replace(".part", "")
+                    .replace(".ytdl", "")
+                    .replace(".temp", "")
+                    .lower()
+                )
+                clean_filename = re.sub(r"[^\w\s-]", "", clean_filename).strip()
+
                 # Calculate similarity
                 filename_words = set(clean_filename.split())
                 title_words = set(clean_completed_title.split())
-                
+
                 if not filename_words or not title_words:
                     continue
-                    
+
                 intersection = len(filename_words.intersection(title_words))
                 union = len(filename_words.union(title_words))
                 similarity = intersection / union if union > 0 else 0
-                
+
                 # Also check if the title is contained in filename or vice versa
-                if clean_completed_title in clean_filename or clean_filename in clean_completed_title:
+                if (
+                    clean_completed_title in clean_filename
+                    or clean_filename in clean_completed_title
+                ):
                     similarity = max(similarity, 0.98)
-                
+
                 if similarity >= 0.98:  # 98% match threshold
                     try:
                         file_path = os.path.join(download_path, filename)
                         os.remove(file_path)
                         removed_files.append(filename)
-                        print(f" [+] Auto-cleaned matching partial file: {filename} (similarity: {similarity:.2%})")
+                        print(
+                            f" [+] Auto-cleaned matching partial file: {filename} (similarity: {similarity:.2%})"
+                        )
                     except Exception as e:
                         print(f" [!] Error auto-cleaning partial file {filename}: {e}")
-        
+
         return removed_files
     except Exception as e:
         print(f" [!] Error in auto_cleanup_matching_partial_files: {e}")
         return []
 
+
 def setup_logging():
     """Set up circular buffer logging for the web server."""
-    os.makedirs('.logs', exist_ok=True)
-    
+    os.makedirs(".logs", exist_ok=True)
+
     # Create logger
-    logger = logging.getLogger('quikvid_server')
+    logger = logging.getLogger("quikvid_server")
     logger.setLevel(logging.DEBUG)
-    
+
     # Remove existing handlers to avoid duplicates
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
-    
+
     # Create rotating file handler (circular buffer)
     # 5MB max file size, keep 3 files (15MB total)
     file_handler = logging.handlers.RotatingFileHandler(
-        '.logs/server.log',
-        maxBytes=5*1024*1024,  # 5MB
+        ".logs/server.log",
+        maxBytes=5 * 1024 * 1024,  # 5MB
         backupCount=3,
-        encoding='utf-8'
+        encoding="utf-8",
     )
-    
+
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    
+
     # Create formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
-    
+
     file_handler.setFormatter(formatter)
-    console_handler.setFormatter(logging.Formatter('%(message)s'))  # Simple console format
-    
+    console_handler.setFormatter(
+        logging.Formatter("%(message)s")
+    )  # Simple console format
+
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    
+
     return logger
+
 
 # Set up logging
 server_logger = setup_logging()
 
+
 class DownloadProgress:
     """Track download progress and status."""
+
     def __init__(self, download_id, url, title, retry_count=0):
         self.download_id = download_id
         self.url = url
         self.title = title
-        self.status = 'preparing'  # preparing, downloading, processing, completed, error, cancelled, failed
+        self.status = "preparing"  # preparing, downloading, processing, completed, error, cancelled, failed
         self.percent = 0.0
-        self.speed = ''
-        self.eta = ''
+        self.speed = ""
+        self.eta = ""
         self.error = None
         self.cancelled = False
         self.process = None
@@ -632,117 +736,132 @@ class DownloadProgress:
         self.open_folder = True
         self.partial_files = []
 
+
 class QuikvidHandler(BaseHTTPRequestHandler):
     """HTTP request handler for Quikvid-DL API."""
-    
+
     def do_OPTIONS(self):
         """Handle CORS preflight requests."""
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
-    
+
     def do_GET(self):
         """Handle GET requests."""
         parsed_path = urlparse(self.path)
-        
-        if parsed_path.path == '/status':
-            self.send_json_response({'status': 'running', 'message': 'Quikvid-DL server is active'})
-        elif parsed_path.path.startswith('/progress/'):
-            download_id = parsed_path.path.split('/')[-1]
+
+        if parsed_path.path == "/status":
+            self.send_json_response(
+                {"status": "running", "message": "Quikvid-DL server is active"}
+            )
+        elif parsed_path.path.startswith("/progress/"):
+            download_id = parsed_path.path.split("/")[-1]
             self.handle_progress_request(download_id)
-        elif parsed_path.path == '/current-folder':
+        elif parsed_path.path == "/current-folder":
             self.handle_current_folder_request()
-        elif parsed_path.path == '/debug':
+        elif parsed_path.path == "/debug":
             self.handle_debug_request()
-        elif parsed_path.path == '/uninstall':
+        elif parsed_path.path == "/uninstall":
             self.handle_uninstall_request()
-        elif parsed_path.path == '/browse-downloads':
+        elif parsed_path.path == "/browse-downloads":
             self.handle_browse_downloads_request()
-        elif parsed_path.path.startswith('/open-file/'):
+        elif parsed_path.path.startswith("/open-file/"):
             self.handle_open_file_request()
-        elif parsed_path.path.startswith('/stream-video/'):
+        elif parsed_path.path.startswith("/stream-video/"):
             self.handle_stream_video_request()
-        elif parsed_path.path.startswith('/find-failed-download-for-file/'):
-            filename = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/find-failed-download-for-file/"):
+            filename = parsed_path.path.split("/")[-1]
             self.handle_find_failed_download_request(filename)
-        elif parsed_path.path == '/favicon.ico':
+        elif parsed_path.path == "/favicon.ico":
             # Serve the new favicon.ico
             try:
-                favicon_path = os.path.join(os.getcwd(), "static", "favicons", "favicon.ico")
+                favicon_path = os.path.join(
+                    os.getcwd(), "static", "favicons", "favicon.ico"
+                )
                 if os.path.exists(favicon_path):
                     self.send_response(200)
-                    self.send_header('Content-Type', 'image/x-icon')
-                    self.send_header('Cache-Control', 'public, max-age=3600')
+                    self.send_header("Content-Type", "image/x-icon")
+                    self.send_header("Cache-Control", "public, max-age=3600")
                     self.end_headers()
-                    
-                    with open(favicon_path, 'rb') as f:
+
+                    with open(favicon_path, "rb") as f:
                         self.wfile.write(f.read())
                 else:
-                    self.send_error(404, 'Favicon not found')
+                    self.send_error(404, "Favicon not found")
             except Exception as e:
                 print(f"Error serving favicon: {e}")
-                self.send_error(500, 'Internal server error')
-        elif parsed_path.path.startswith('/static/'):
+                self.send_error(500, "Internal server error")
+        elif parsed_path.path.startswith("/static/"):
             # Serve static files (favicons, etc.)
             self.serve_static_file(parsed_path.path)
-        elif parsed_path.path == '/':
+        elif parsed_path.path == "/api/metadata":
+            self.handle_get_metadata_request()
+        elif parsed_path.path == "/":
             self.send_html_response(self.get_web_interface())
         else:
-            self.send_error(404, 'Not Found')
-    
+            self.send_error(404, "Not Found")
+
     def do_POST(self):
         """Handle POST requests."""
         parsed_path = urlparse(self.path)
-        
-        if parsed_path.path == '/download':
+
+        if parsed_path.path == "/download":
             self.handle_download_request()
-        elif parsed_path.path.startswith('/cancel/'):
-            download_id = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/cancel/"):
+            download_id = parsed_path.path.split("/")[-1]
             self.handle_cancel_request(download_id)
-        elif parsed_path.path.startswith('/retry/'):
-            download_id = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/retry/"):
+            download_id = parsed_path.path.split("/")[-1]
             self.handle_retry_request(download_id)
-        elif parsed_path.path.startswith('/delete/'):
-            download_id = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/delete/"):
+            download_id = parsed_path.path.split("/")[-1]
             self.handle_delete_request(download_id)
-        elif parsed_path.path.startswith('/clear/'):
-            download_id = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/clear/"):
+            download_id = parsed_path.path.split("/")[-1]
             self.handle_clear_request(download_id)
-        elif parsed_path.path.startswith('/delete-partial-file/'):
-            filename = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/delete-partial-file/"):
+            filename = parsed_path.path.split("/")[-1]
             self.handle_delete_partial_file_request(filename)
-        elif parsed_path.path.startswith('/find-failed-download-for-file/'):
-            filename = parsed_path.path.split('/')[-1]
+        elif parsed_path.path.startswith("/find-failed-download-for-file/"):
+            filename = parsed_path.path.split("/")[-1]
             self.handle_find_failed_download_request(filename)
-        elif parsed_path.path == '/select-folder':
+        elif parsed_path.path == "/select-folder":
             self.handle_folder_selection_request()
-        elif parsed_path.path == '/open-folder':
+        elif parsed_path.path == "/open-folder":
             self.handle_open_folder_request()
-        elif parsed_path.path == '/stop-server':
+        elif parsed_path.path == "/stop-server":
             self.handle_stop_server_request()
+        elif parsed_path.path == "/api/metadata/person-name":
+            self.handle_save_person_name_request()
+        elif parsed_path.path == "/api/metadata/tags":
+            self.handle_save_tags_request()
+        elif parsed_path.path == "/api/metadata/import":
+            self.handle_import_metadata_request()
         else:
-            self.send_error(404, 'Not Found')
-    
+            self.send_error(404, "Not Found")
+
     def handle_progress_request(self, download_id):
         """Handle progress check requests."""
         with download_lock:
             if download_id not in active_downloads:
-                self.send_json_response({'error': 'Download not found'}, status=404)
+                self.send_json_response({"error": "Download not found"}, status=404)
                 return
-            
+
             progress = active_downloads[download_id]
-            self.send_json_response({
-                'downloadId': download_id,
-                'status': progress.status,
-                'percent': progress.percent,
-                'speed': progress.speed,
-                'eta': progress.eta,
-                'error': progress.error,
-                'title': progress.title
-            })
-    
+            self.send_json_response(
+                {
+                    "downloadId": download_id,
+                    "status": progress.status,
+                    "percent": progress.percent,
+                    "speed": progress.speed,
+                    "eta": progress.eta,
+                    "error": progress.error,
+                    "title": progress.title,
+                }
+            )
+
     def handle_retry_request(self, download_id):
         """Handle download retry requests."""
         try:
@@ -750,344 +869,379 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             if download_id in failed_downloads:
                 failed_download = failed_downloads[download_id]
                 print(f" [+] Retrying failed download: {failed_download['title']}")
-                
+
                 # Create new progress tracker with incremented retry count
                 progress = DownloadProgress(
-                    download_id, 
-                    failed_download['url'], 
-                    failed_download['title'], 
-                    retry_count=failed_download['retry_count'] + 1
+                    download_id,
+                    failed_download["url"],
+                    failed_download["title"],
+                    retry_count=failed_download["retry_count"] + 1,
                 )
-                progress.open_folder = failed_download.get('open_folder', True)
-                
+                progress.open_folder = failed_download.get("open_folder", True)
+
                 with download_lock:
                     active_downloads[download_id] = progress
                     save_active_downloads()
-                
+
                 # Remove from failed downloads (it will be re-added if it fails again)
                 remove_failed_download(download_id)
-                
+
                 # Start download in background thread
                 download_thread = threading.Thread(
                     target=self.download_video_with_progress,
-                    args=(progress, progress.open_folder)
+                    args=(progress, progress.open_folder),
                 )
                 download_thread.daemon = True
                 download_thread.start()
-                
-                self.send_json_response({
-                    'success': True,
-                    'message': 'Download retry started',
-                    'downloadId': download_id,
-                    'retry_count': progress.retry_count
-                })
-                
+
+                self.send_json_response(
+                    {
+                        "success": True,
+                        "message": "Download retry started",
+                        "downloadId": download_id,
+                        "retry_count": progress.retry_count,
+                    }
+                )
+
             elif download_id in active_downloads:
                 # It's an active failed download
                 progress = active_downloads[download_id]
-                if progress.status == 'error':
+                if progress.status == "error":
                     print(f" [+] Retrying active failed download: {progress.title}")
-                    
+
                     # Reset progress for retry
-                    progress.status = 'preparing'
+                    progress.status = "preparing"
                     progress.percent = 0.0
                     progress.error = None
                     progress.retry_count += 1
-                    
+
                     # Start download in background thread
                     download_thread = threading.Thread(
                         target=self.download_video_with_progress,
-                        args=(progress, progress.open_folder)
+                        args=(progress, progress.open_folder),
                     )
                     download_thread.daemon = True
                     download_thread.start()
-                    
-                    self.send_json_response({
-                        'success': True,
-                        'message': 'Download retry started',
-                        'downloadId': download_id,
-                        'retry_count': progress.retry_count
-                    })
+
+                    self.send_json_response(
+                        {
+                            "success": True,
+                            "message": "Download retry started",
+                            "downloadId": download_id,
+                            "retry_count": progress.retry_count,
+                        }
+                    )
                 else:
-                    self.send_json_response({
-                        'success': False,
-                        'error': 'Download is not in a failed state'
-                    }, status=400)
+                    self.send_json_response(
+                        {
+                            "success": False,
+                            "error": "Download is not in a failed state",
+                        },
+                        status=400,
+                    )
             else:
-                self.send_json_response({
-                    'success': False,
-                    'error': 'Download not found'
-                }, status=404)
-                
+                self.send_json_response(
+                    {"success": False, "error": "Download not found"}, status=404
+                )
+
         except Exception as e:
             print(f" [!] Error retrying download: {e}")
-            self.send_json_response({'success': False, 'error': str(e)}, status=500)
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
 
     def handle_delete_request(self, download_id):
         """Handle download deletion requests with partial file cleanup."""
         try:
             removed_files = []
             download_title = "Unknown"
-            
+
             # Check active downloads first
             if download_id in active_downloads:
                 progress = active_downloads[download_id]
                 download_title = progress.title
-                
+
                 # Cancel if running
-                if progress.status in ['preparing', 'downloading', 'processing']:
+                if progress.status in ["preparing", "downloading", "processing"]:
                     progress.cancelled = True
-                    progress.status = 'cancelled'
-                
+                    progress.status = "cancelled"
+
                 # Clean up partial files
                 removed_files = cleanup_partial_files(download_id, progress.title)
-                
+
                 with download_lock:
                     del active_downloads[download_id]
                     save_active_downloads()
-                    
+
             # Check failed downloads
             elif download_id in failed_downloads:
                 failed_download = failed_downloads[download_id]
-                download_title = failed_download['title']
-                
+                download_title = failed_download["title"]
+
                 # Clean up partial files
-                removed_files = cleanup_partial_files(download_id, failed_download['title'])
-                
+                removed_files = cleanup_partial_files(
+                    download_id, failed_download["title"]
+                )
+
                 # Remove from failed downloads store
                 remove_failed_download(download_id)
             else:
-                self.send_json_response({
-                    'success': False,
-                    'error': 'Download not found'
-                }, status=404)
+                self.send_json_response(
+                    {"success": False, "error": "Download not found"}, status=404
+                )
                 return
-            
+
             print(f" [+] Deleted download: {download_title}")
             if removed_files:
                 print(f" [+] Cleaned up partial files: {', '.join(removed_files)}")
-                
-            self.send_json_response({
-                'success': True,
-                'message': f'Download deleted: {download_title}',
-                'downloadId': download_id,
-                'removedFiles': removed_files
-            })
-            
+
+            self.send_json_response(
+                {
+                    "success": True,
+                    "message": f"Download deleted: {download_title}",
+                    "downloadId": download_id,
+                    "removedFiles": removed_files,
+                }
+            )
+
         except Exception as e:
             print(f" [!] Error deleting download: {e}")
-            self.send_json_response({'success': False, 'error': str(e)}, status=500)
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
 
     def handle_clear_request(self, download_id):
         """Handle clear request for completed downloads (removes from list without deleting files)."""
         try:
             download_title = "Unknown"
-            
+
             # Check active downloads first
             if download_id in active_downloads:
                 progress = active_downloads[download_id]
                 download_title = progress.title
-                
+
                 # Only allow clearing completed downloads
-                if progress.status != 'completed':
-                    self.send_json_response({
-                        'success': False,
-                        'error': 'Can only clear completed downloads'
-                    }, status=400)
+                if progress.status != "completed":
+                    self.send_json_response(
+                        {
+                            "success": False,
+                            "error": "Can only clear completed downloads",
+                        },
+                        status=400,
+                    )
                     return
-                
+
                 with download_lock:
                     del active_downloads[download_id]
                     save_active_downloads()
-                    
-            # Check failed downloads  
+
+            # Check failed downloads
             elif download_id in failed_downloads:
                 failed_download = failed_downloads[download_id]
-                download_title = failed_download['title']
-                
+                download_title = failed_download["title"]
+
                 # Remove from failed downloads store
                 remove_failed_download(download_id)
             else:
-                self.send_json_response({
-                    'success': False,
-                    'error': 'Download not found'
-                }, status=404)
+                self.send_json_response(
+                    {"success": False, "error": "Download not found"}, status=404
+                )
                 return
-            
+
             print(f" [+] Cleared download from list: {download_title}")
-                
-            self.send_json_response({
-                'success': True,
-                'message': f'Download cleared: {download_title}',
-                'downloadId': download_id
-            })
-            
+
+            self.send_json_response(
+                {
+                    "success": True,
+                    "message": f"Download cleared: {download_title}",
+                    "downloadId": download_id,
+                }
+            )
+
         except Exception as e:
             print(f" [!] Error clearing download: {e}")
-            self.send_json_response({'success': False, 'error': str(e)}, status=500)
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
 
     def handle_delete_partial_file_request(self, filename):
         """Handle deletion of individual partial files."""
         try:
             # Decode URL-encoded filename
             import urllib.parse
+
             filename = urllib.parse.unquote(filename)
-            
+
             # Construct full file path
             downloads_path = config.get_video_download_path()
             file_path = os.path.join(downloads_path, filename)
-            
+
             # Security check - ensure the file is in the downloads directory
             if not file_path.startswith(downloads_path):
-                self.send_json_response({
-                    'success': False,
-                    'message': 'Invalid file path'
-                }, status=400)
+                self.send_json_response(
+                    {"success": False, "message": "Invalid file path"}, status=400
+                )
                 return
-            
+
             # Check if file exists
             if not os.path.exists(file_path):
-                self.send_json_response({
-                    'success': False,
-                    'message': 'File not found'
-                }, status=404)
+                self.send_json_response(
+                    {"success": False, "message": "File not found"}, status=404
+                )
                 return
-            
+
             # Verify it's actually a partial file
-            if not filename.endswith(('.part', '.ytdl', '.temp')):
-                self.send_json_response({
-                    'success': False,
-                    'message': 'Can only delete partial download files (.part, .ytdl, .temp)'
-                }, status=400)
+            if not filename.endswith((".part", ".ytdl", ".temp")):
+                self.send_json_response(
+                    {
+                        "success": False,
+                        "message": "Can only delete partial download files (.part, .ytdl, .temp)",
+                    },
+                    status=400,
+                )
                 return
-            
+
             # Delete the file
             os.remove(file_path)
-            
+
             print(f" [+] Deleted partial file: {filename}")
-            
-            self.send_json_response({
-                'success': True,
-                'message': f'Successfully deleted {filename}',
-                'filename': filename
-            })
-            
+
+            self.send_json_response(
+                {
+                    "success": True,
+                    "message": f"Successfully deleted {filename}",
+                    "filename": filename,
+                }
+            )
+
         except Exception as e:
             print(f" [!] Error deleting partial file: {e}")
-            self.send_json_response({
-                'success': False,
-                'message': f'Failed to delete file: {str(e)}'
-            }, status=500)
+            self.send_json_response(
+                {"success": False, "message": f"Failed to delete file: {str(e)}"},
+                status=500,
+            )
 
     def handle_find_failed_download_request(self, filename):
         """Handle finding a failed download that matches a partial file."""
         try:
             # Decode URL-encoded filename
             import urllib.parse
+
             filename = urllib.parse.unquote(filename)
-            
+
             print(f" [+] Looking for download matching: {filename}")
-            
+
             # First check URL tracker for incomplete downloads
             tracker = get_tracker()
             url_match = tracker.find_by_partial_filename(filename)
-            
+
             if url_match:
                 url_track_id, url_data = url_match
                 print(f" [+] Found matching URL in tracker: {url_data['title']}")
-                
+
                 # Convert to failed download format
                 failed_download = {
-                    'url': url_data['url'],
-                    'title': url_data['title'],
-                    'error': url_data.get('last_error', 'Download incomplete'),
-                    'retry_count': url_data.get('attempts', 0),
-                    'open_folder': True
+                    "url": url_data["url"],
+                    "title": url_data["title"],
+                    "error": url_data.get("last_error", "Download incomplete"),
+                    "retry_count": url_data.get("attempts", 0),
+                    "open_folder": True,
                 }
-                
-                self.send_json_response({
-                    'success': True,
-                    'failed_download': failed_download,
-                    'download_id': url_track_id,
-                    'filename': filename
-                })
+
+                self.send_json_response(
+                    {
+                        "success": True,
+                        "failed_download": failed_download,
+                        "download_id": url_track_id,
+                        "filename": filename,
+                    }
+                )
                 return
-            
+
             # Fallback to old system for compatibility
             match_result = find_matching_failed_download(filename)
-            
+
             if match_result:
                 download_id, failed_download = match_result
-                print(f" [+] Found matching failed download: {failed_download['title']} (ID: {download_id})")
-                
-                self.send_json_response({
-                    'success': True,
-                    'failed_download': failed_download,
-                    'download_id': download_id,
-                    'filename': filename
-                })
+                print(
+                    f" [+] Found matching failed download: {failed_download['title']} (ID: {download_id})"
+                )
+
+                self.send_json_response(
+                    {
+                        "success": True,
+                        "failed_download": failed_download,
+                        "download_id": download_id,
+                        "filename": filename,
+                    }
+                )
             else:
                 # Also check active downloads (in case of recent crash/restart)
                 print(f" [+] Checking active downloads for: {filename}")
                 match_result = find_matching_active_download(filename)
-                
+
                 if match_result:
                     download_id, active_download = match_result
-                    print(f" [+] Found matching active download: {active_download['title']} (ID: {download_id})")
-                    
+                    print(
+                        f" [+] Found matching active download: {active_download['title']} (ID: {download_id})"
+                    )
+
                     # Convert to failed download format
                     failed_download = {
-                        'url': active_download['url'],
-                        'title': active_download.get('title', 'Unknown'),
-                        'error': 'Download interrupted',
-                        'retry_count': active_download.get('retry_count', 0),
-                        'open_folder': active_download.get('open_folder', True)
+                        "url": active_download["url"],
+                        "title": active_download.get("title", "Unknown"),
+                        "error": "Download interrupted",
+                        "retry_count": active_download.get("retry_count", 0),
+                        "open_folder": active_download.get("open_folder", True),
                     }
-                    
-                    self.send_json_response({
-                        'success': True,
-                        'failed_download': failed_download,
-                        'download_id': download_id,
-                        'filename': filename
-                    })
+
+                    self.send_json_response(
+                        {
+                            "success": True,
+                            "failed_download": failed_download,
+                            "download_id": download_id,
+                            "filename": filename,
+                        }
+                    )
                 else:
                     print(f" [-] No matching download found for: {filename}")
-                    self.send_json_response({
-                        'success': False,
-                        'message': 'No matching download found',
-                        'filename': filename
-                    })
-                
+                    self.send_json_response(
+                        {
+                            "success": False,
+                            "message": "No matching download found",
+                            "filename": filename,
+                        }
+                    )
+
         except Exception as e:
             print(f" [!] Error finding failed download: {e}")
-            self.send_json_response({
-                'success': False,
-                'message': f'Error finding failed download: {str(e)}'
-            }, status=500)
+            self.send_json_response(
+                {
+                    "success": False,
+                    "message": f"Error finding failed download: {str(e)}",
+                },
+                status=500,
+            )
 
     def handle_cancel_request(self, download_id):
         """Handle download cancellation requests."""
         with download_lock:
             if download_id not in active_downloads:
-                self.send_json_response({'error': 'Download not found'}, status=404)
+                self.send_json_response({"error": "Download not found"}, status=404)
                 return
-            
+
             progress = active_downloads[download_id]
             progress.cancelled = True
-            progress.status = 'cancelled'
-            
+            progress.status = "cancelled"
+
             print(f" [!] Cancelling download: {progress.title}")
-            
+
             # Try to interrupt the download thread
-            if hasattr(progress, 'download_thread') and progress.download_thread:
+            if hasattr(progress, "download_thread") and progress.download_thread:
                 try:
                     # The yt-dlp process will check progress.cancelled in the progress hook
-                    print(f" [!] Marking download as cancelled, thread will stop on next progress check")
+                    print(
+                        f" [!] Marking download as cancelled, thread will stop on next progress check"
+                    )
                 except Exception as e:
                     print(f" [!] Error interrupting thread: {e}")
-            
+
             # Try to terminate the process if it exists
-            if hasattr(progress, 'process') and progress.process:
+            if hasattr(progress, "process") and progress.process:
                 try:
                     progress.process.terminate()
                     # Give it a moment to terminate gracefully
@@ -1097,29 +1251,34 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         print(f" [!] Killed stubborn process for: {progress.title}")
                 except Exception as e:
                     print(f" [!] Error terminating process: {e}")
-            
+
             print(f" [!] Download cancellation initiated: {progress.title}")
-            self.send_json_response({'success': True, 'message': 'Download cancellation initiated'})
-            
+            self.send_json_response(
+                {"success": True, "message": "Download cancellation initiated"}
+            )
+
             # Clean up any partial files
             self.cleanup_partial_files(progress)
-    
+
     def handle_debug_request(self):
         """Handle debug requests to show all active downloads and failed downloads."""
         with download_lock:
             # Count only truly active downloads (preparing, downloading, processing)
-            actual_active_count = sum(1 for progress in active_downloads.values() 
-                                    if progress.status in ['preparing', 'downloading', 'processing'])
-            
+            actual_active_count = sum(
+                1
+                for progress in active_downloads.values()
+                if progress.status in ["preparing", "downloading", "processing"]
+            )
+
             debug_info = {
-                'active_downloads_count': actual_active_count,
-                'failed_downloads_count': len(failed_downloads),
-                'downloads': []
+                "active_downloads_count": actual_active_count,
+                "failed_downloads_count": len(failed_downloads),
+                "downloads": [],
             }
-            
+
             # Track seen titles/URLs to prevent duplicates
             seen_items = set()
-            
+
             # Add active downloads
             for download_id, progress in active_downloads.items():
                 # Create unique key based on title and URL
@@ -1127,434 +1286,699 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 if item_key in seen_items:
                     continue
                 seen_items.add(item_key)
-                
+
                 download_info = {
-                    'downloadId': download_id,
-                    'title': progress.title,
-                    'url': progress.url,
-                    'status': progress.status,
-                    'percent': progress.percent,
-                    'speed': progress.speed,
-                    'eta': progress.eta,
-                    'error': progress.error,
-                    'cancelled': progress.cancelled,
-                    'has_thread': hasattr(progress, 'download_thread') and progress.download_thread is not None,
-                    'thread_alive': hasattr(progress, 'download_thread') and progress.download_thread and progress.download_thread.is_alive(),
-                    'start_time': progress.start_time,
-                    'runtime_seconds': time.time() - progress.start_time,
-                    'retry_count': getattr(progress, 'retry_count', 0),
-                    'is_failed': False
+                    "downloadId": download_id,
+                    "title": progress.title,
+                    "url": progress.url,
+                    "status": progress.status,
+                    "percent": progress.percent,
+                    "speed": progress.speed,
+                    "eta": progress.eta,
+                    "error": progress.error,
+                    "cancelled": progress.cancelled,
+                    "has_thread": hasattr(progress, "download_thread")
+                    and progress.download_thread is not None,
+                    "thread_alive": hasattr(progress, "download_thread")
+                    and progress.download_thread
+                    and progress.download_thread.is_alive(),
+                    "start_time": progress.start_time,
+                    "runtime_seconds": time.time() - progress.start_time,
+                    "retry_count": getattr(progress, "retry_count", 0),
+                    "is_failed": False,
                 }
-                debug_info['downloads'].append(download_info)
-            
+                debug_info["downloads"].append(download_info)
+
             # Add failed downloads that aren't currently active and not duplicates
             for download_id, failed_download in failed_downloads.items():
                 if download_id not in active_downloads:
                     # Create unique key based on title and URL
-                    item_key = (failed_download['title'], failed_download['url'])
+                    item_key = (failed_download["title"], failed_download["url"])
                     if item_key in seen_items:
                         continue
                     seen_items.add(item_key)
                     download_info = {
-                        'downloadId': download_id,
-                        'title': failed_download['title'],
-                        'url': failed_download['url'],
-                        'status': 'failed',
-                        'percent': 0.0,
-                        'speed': '',
-                        'eta': '',
-                        'error': failed_download['error'],
-                        'cancelled': False,
-                        'has_thread': False,
-                        'thread_alive': False,
-                        'start_time': failed_download.get('failed_at', time.time()),
-                        'runtime_seconds': 0,
-                        'retry_count': failed_download.get('retry_count', 0),
-                        'is_failed': True
+                        "downloadId": download_id,
+                        "title": failed_download["title"],
+                        "url": failed_download["url"],
+                        "status": "failed",
+                        "percent": 0.0,
+                        "speed": "",
+                        "eta": "",
+                        "error": failed_download["error"],
+                        "cancelled": False,
+                        "has_thread": False,
+                        "thread_alive": False,
+                        "start_time": failed_download.get("failed_at", time.time()),
+                        "runtime_seconds": 0,
+                        "retry_count": failed_download.get("retry_count", 0),
+                        "is_failed": True,
                     }
-                    debug_info['downloads'].append(download_info)
-            
+                    debug_info["downloads"].append(download_info)
+
             self.send_json_response(debug_info)
-    
+
     def handle_uninstall_request(self):
         """Handle uninstall requests - opens Finder to uninstall script location."""
         import subprocess
         import os
-        
+
         try:
             # Try multiple possible locations for the uninstall script
             possible_paths = [
                 # First try the macos-installer directory (from VidSnatch-Installer.zip)
-                os.path.abspath(os.path.join(os.path.dirname(__file__), 'macos-installer', 'uninstall.sh')),
+                os.path.abspath(
+                    os.path.join(
+                        os.path.dirname(__file__), "macos-installer", "uninstall.sh"
+                    )
+                ),
                 # Try the command file in macos-installer
-                os.path.abspath(os.path.join(os.path.dirname(__file__), 'macos-installer', '🗑️ Uninstall VidSnatch.command')),
+                os.path.abspath(
+                    os.path.join(
+                        os.path.dirname(__file__),
+                        "macos-installer",
+                        "🗑️ Uninstall VidSnatch.command",
+                    )
+                ),
                 # Fallback to the source directory
-                os.path.abspath(os.path.join(os.path.dirname(__file__), 'uninstall-vidsnatch.sh'))
+                os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "uninstall-vidsnatch.sh")
+                ),
             ]
-            
+
             script_path = None
             for path in possible_paths:
                 if os.path.exists(path):
                     script_path = path
                     break
-            
+
             if script_path:
                 # Open Finder to the directory containing the uninstall script
-                subprocess.run(['open', '-R', script_path], check=True)
-                self.send_json_response({
-                    'status': 'success', 
-                    'message': 'Finder opened to uninstall script location',
-                    'script_path': script_path
-                })
+                subprocess.run(["open", "-R", script_path], check=True)
+                self.send_json_response(
+                    {
+                        "status": "success",
+                        "message": "Finder opened to uninstall script location",
+                        "script_path": script_path,
+                    }
+                )
             else:
-                self.send_json_response({
-                    'status': 'error', 
-                    'message': f'Uninstall script not found. Checked paths: {", ".join(possible_paths)}',
-                    'checked_paths': possible_paths
-                })
+                self.send_json_response(
+                    {
+                        "status": "error",
+                        "message": f"Uninstall script not found. Checked paths: {', '.join(possible_paths)}",
+                        "checked_paths": possible_paths,
+                    }
+                )
         except Exception as e:
-            self.send_json_response({
-                'status': 'error', 
-                'message': f'Failed to open uninstall location: {str(e)}'
-            })
-    
+            self.send_json_response(
+                {
+                    "status": "error",
+                    "message": f"Failed to open uninstall location: {str(e)}",
+                }
+            )
+
     def handle_browse_downloads_request(self):
-        """Handle requests to browse downloads folder."""
+        """Handle requests to browse downloads folder with subdirectory support."""
         try:
             # Get current download folder
             folder_path = config.get_video_download_path()
-            
+
             if not os.path.exists(folder_path):
-                self.send_json_response({
-                    'status': 'error',
-                    'message': 'Downloads folder not found',
-                    'path': folder_path
-                })
+                self.send_json_response(
+                    {
+                        "status": "error",
+                        "message": "Downloads folder not found",
+                        "path": folder_path,
+                    }
+                )
                 return
-            
-            files = []
+
             file_metadata = get_file_metadata()
-            
+
             # Get list of files currently being downloaded to exclude them
             actively_downloading_files = set()
             with download_lock:
                 for progress in active_downloads.values():
-                    if progress.status in ['preparing', 'downloading', 'processing']:
+                    if progress.status in ["preparing", "downloading", "processing"]:
                         # Try to extract filename from the progress object or URL
-                        if hasattr(progress, 'filename') and progress.filename:
+                        if hasattr(progress, "filename") and progress.filename:
                             actively_downloading_files.add(progress.filename)
-                        elif hasattr(progress, 'title') and progress.title:
+                        elif hasattr(progress, "title") and progress.title:
                             # Create potential filename from title (common video extensions)
-                            for ext in ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v']:
+                            for ext in [
+                                ".mp4",
+                                ".mkv",
+                                ".webm",
+                                ".avi",
+                                ".mov",
+                                ".m4v",
+                            ]:
                                 potential_filename = f"{progress.title}{ext}"
                                 actively_downloading_files.add(potential_filename)
-            
+
+            # Check if folder has subdirectories with video files
+            subdirs = []
+            has_video_subdirs = False
+
             try:
-                for item in sorted(os.listdir(folder_path)):
-                    # Skip hidden files and system files
-                    if item.startswith('.') or item.startswith('~'):
+                for item in os.listdir(folder_path):
+                    if item.startswith(".") or item.startswith("~"):
                         continue
-                    
-                    # Skip files that are currently being downloaded
-                    if item in actively_downloading_files:
-                        continue
-                    
-                    # Skip partial download files (common partial extensions)
-                    if item.endswith(('.part', '.ytdl', '.temp', '.download', '.crdownload')):
-                        continue
-                        
                     item_path = os.path.join(folder_path, item)
-                    if os.path.isfile(item_path):
-                        # Get file info
-                        stat = os.stat(item_path)
-                        size = stat.st_size
-                        modified = stat.st_mtime
-                        
-                        # Format size
-                        if size < 1024:
-                            size_str = f"{size} B"
-                        elif size < 1024*1024:
-                            size_str = f"{size/1024:.1f} KB"
-                        elif size < 1024*1024*1024:
-                            size_str = f"{size/(1024*1024):.1f} MB"
-                        else:
-                            size_str = f"{size/(1024*1024*1024):.1f} GB"
-                        
-                        # Get video duration if it's a video file
-                        duration = None
-                        if item.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v')):
-                            duration = get_video_duration(item_path)
-                        
-                        # Get file metadata (URL and title)
-                        metadata = file_metadata.get_file_metadata(item)
-                        source_url = metadata.get('url', '') if metadata else ''
-                        
-                        files.append({
-                            'name': item,
-                            'size': size_str,
-                            'modified': modified,
-                            'path': item_path,
-                            'duration': duration,
-                            'url': source_url
-                        })
+                    if os.path.isdir(item_path):
+                        # Check if subdirectory has any video files
+                        has_videos = any(
+                            f.lower().endswith(config.VIDEO_EXTENSIONS)
+                            for f in os.listdir(item_path)
+                            if os.path.isfile(os.path.join(item_path, f))
+                        )
+                        if has_videos:
+                            subdirs.append(item)
+                            has_video_subdirs = True
             except PermissionError:
                 pass
-            
-            self.send_json_response({
-                'status': 'success',
-                'folder': folder_path,
-                'files': files
-            })
-            
+
+            # If there are subdirectories with videos, organize by folder
+            if has_video_subdirs:
+                folders = {}
+
+                for subdir in sorted(subdirs):
+                    subdir_path = os.path.join(folder_path, subdir)
+                    folder_files = []
+
+                    try:
+                        for item in sorted(os.listdir(subdir_path)):
+                            # Skip hidden files and system files
+                            if item.startswith(".") or item.startswith("~"):
+                                continue
+
+                            # Skip files that are currently being downloaded
+                            if item in actively_downloading_files:
+                                continue
+
+                            # Skip partial download files
+                            if item.endswith(
+                                (".part", ".ytdl", ".temp", ".download", ".crdownload")
+                            ):
+                                continue
+
+                            item_path = os.path.join(subdir_path, item)
+                            if os.path.isfile(item_path):
+                                # Only include video files
+                                if not item.lower().endswith(config.VIDEO_EXTENSIONS):
+                                    continue
+
+                                # Get file info
+                                stat = os.stat(item_path)
+                                size = stat.st_size
+                                modified = stat.st_mtime
+
+                                # Format size
+                                if size < 1024:
+                                    size_str = f"{size} B"
+                                elif size < 1024 * 1024:
+                                    size_str = f"{size / 1024:.1f} KB"
+                                elif size < 1024 * 1024 * 1024:
+                                    size_str = f"{size / (1024 * 1024):.1f} MB"
+                                else:
+                                    size_str = f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+                                # Get file metadata (URL and title)
+                                metadata = file_metadata.get_file_metadata(item)
+                                source_url = metadata.get("url", "") if metadata else ""
+
+                                folder_files.append(
+                                    {
+                                        "name": item,
+                                        "size": size_str,
+                                        "modified": modified,
+                                        "path": item_path,
+                                        "url": source_url,
+                                    }
+                                )
+                    except PermissionError:
+                        pass
+
+                    if folder_files:
+                        folders[subdir] = folder_files
+
+                self.send_json_response(
+                    {
+                        "status": "success",
+                        "folder": folder_path,
+                        "has_subdirs": True,
+                        "folders": folders,
+                    }
+                )
+            else:
+                # No subdirectories, show files directly (original behavior)
+                files = []
+
+                try:
+                    for item in sorted(os.listdir(folder_path)):
+                        # Skip hidden files and system files
+                        if item.startswith(".") or item.startswith("~"):
+                            continue
+
+                        # Skip files that are currently being downloaded
+                        if item in actively_downloading_files:
+                            continue
+
+                        # Skip partial download files
+                        if item.endswith(
+                            (".part", ".ytdl", ".temp", ".download", ".crdownload")
+                        ):
+                            continue
+
+                        item_path = os.path.join(folder_path, item)
+                        if os.path.isfile(item_path):
+                            # Only include video files
+                            if not item.lower().endswith(config.VIDEO_EXTENSIONS):
+                                continue
+
+                            # Get file info
+                            stat = os.stat(item_path)
+                            size = stat.st_size
+                            modified = stat.st_mtime
+
+                            # Format size
+                            if size < 1024:
+                                size_str = f"{size} B"
+                            elif size < 1024 * 1024:
+                                size_str = f"{size / 1024:.1f} KB"
+                            elif size < 1024 * 1024 * 1024:
+                                size_str = f"{size / (1024 * 1024):.1f} MB"
+                            else:
+                                size_str = f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+                            # Get file metadata (URL and title)
+                            metadata = file_metadata.get_file_metadata(item)
+                            source_url = metadata.get("url", "") if metadata else ""
+
+                            files.append(
+                                {
+                                    "name": item,
+                                    "size": size_str,
+                                    "modified": modified,
+                                    "path": item_path,
+                                    "url": source_url,
+                                }
+                            )
+                except PermissionError:
+                    pass
+
+                self.send_json_response(
+                    {
+                        "status": "success",
+                        "folder": folder_path,
+                        "has_subdirs": False,
+                        "files": files,
+                    }
+                )
+
         except Exception as e:
-            self.send_json_response({
-                'status': 'error',
-                'message': f'Failed to browse downloads: {str(e)}'
-            })
-    
+            self.send_json_response(
+                {"status": "error", "message": f"Failed to browse downloads: {str(e)}"}
+            )
+
     def serve_static_file(self, path):
         """Serve static files (favicons, etc.)."""
         try:
             # Security: prevent directory traversal
-            if '..' in path or path.startswith('//'):
-                self.send_error(403, 'Access denied')
+            if ".." in path or path.startswith("//"):
+                self.send_error(403, "Access denied")
                 return
-            
+
             # Map URL path to file path - use current working directory for static files
-            static_root = os.path.join(os.getcwd(), 'static')
-            file_path = os.path.join(static_root, path.lstrip('/static/'))
-            
+            static_root = os.path.join(os.getcwd(), "static")
+            file_path = os.path.join(static_root, path.lstrip("/static/"))
+
             # Ensure the file is within the static directory
             if not os.path.abspath(file_path).startswith(os.path.abspath(static_root)):
-                self.send_error(403, 'Access denied')
+                self.send_error(403, "Access denied")
                 return
-            
+
             if not os.path.exists(file_path):
-                self.send_error(404, 'File not found')
+                self.send_error(404, "File not found")
                 return
-            
+
             # Determine content type
-            content_type = 'application/octet-stream'
-            if file_path.endswith('.png'):
-                content_type = 'image/png'
-            elif file_path.endswith('.ico'):
-                content_type = 'image/x-icon'
-            elif file_path.endswith('.webmanifest'):
-                content_type = 'application/manifest+json'
-            elif file_path.endswith('.svg'):
-                content_type = 'image/svg+xml'
-            
+            content_type = "application/octet-stream"
+            if file_path.endswith(".png"):
+                content_type = "image/png"
+            elif file_path.endswith(".ico"):
+                content_type = "image/x-icon"
+            elif file_path.endswith(".webmanifest"):
+                content_type = "application/manifest+json"
+            elif file_path.endswith(".svg"):
+                content_type = "image/svg+xml"
+
             self.send_response(200)
-            self.send_header('Content-Type', content_type)
-            self.send_header('Cache-Control', 'public, max-age=3600')
+            self.send_header("Content-Type", content_type)
+            self.send_header("Cache-Control", "public, max-age=3600")
             self.end_headers()
-            
-            with open(file_path, 'rb') as f:
+
+            with open(file_path, "rb") as f:
                 self.wfile.write(f.read())
-                
+
         except Exception as e:
             print(f"Error serving static file {path}: {e}")
-            self.send_error(500, 'Internal server error')
-    
+            self.send_error(500, "Internal server error")
+
     def handle_open_file_request(self):
         """Handle requests to open a specific file."""
         try:
             # Extract filename from URL and properly decode it
             import urllib.parse
-            encoded_filename = self.path.replace('/open-file/', '')
+
+            encoded_filename = self.path.replace("/open-file/", "")
             filename = urllib.parse.unquote(encoded_filename)
-            
+
             # Join with download path (don't use basename as it strips slashes in filenames)
             download_path = config.get_video_download_path()
             file_path = os.path.join(download_path, filename)
-            
+
+            # If file doesn't exist in root, search subdirectories
+            if not os.path.exists(file_path):
+                found = False
+                # Search in subdirectories
+                try:
+                    for item in os.listdir(download_path):
+                        subdir_path = os.path.join(download_path, item)
+                        if os.path.isdir(subdir_path):
+                            potential_path = os.path.join(subdir_path, filename)
+                            if os.path.exists(potential_path):
+                                file_path = potential_path
+                                found = True
+                                break
+                except (PermissionError, OSError):
+                    pass
+
+                if not found:
+                    self.send_json_response(
+                        {"status": "error", "message": "File not found"}
+                    )
+                    return
+
             # Security check - ensure the resolved path is within the download directory
             file_path = os.path.abspath(file_path)
             download_path = os.path.abspath(download_path)
             if not file_path.startswith(download_path):
-                self.send_json_response({
-                    'status': 'error',
-                    'message': 'Access denied'
-                })
+                self.send_json_response({"status": "error", "message": "Access denied"})
                 return
-            
-            if os.path.exists(file_path):
-                # Open file with default application
-                subprocess.run(['open', file_path], check=True)
-                self.send_json_response({
-                    'status': 'success',
-                    'message': f'Opened {os.path.basename(file_path)}'
-                })
-            else:
-                self.send_json_response({
-                    'status': 'error',
-                    'message': 'File not found'
-                })
-                
+
+            # Open file with default application
+            subprocess.run(["open", file_path], check=True)
+            self.send_json_response(
+                {
+                    "status": "success",
+                    "message": f"Opened {os.path.basename(file_path)}",
+                }
+            )
+
+        except subprocess.CalledProcessError as e:
+            self.send_json_response({"status": "error", "message": "File not found"})
+
         except Exception as e:
-            self.send_json_response({
-                'status': 'error',
-                'message': f'Failed to open file: {str(e)}'
-            })
-    
+            self.send_json_response(
+                {"status": "error", "message": f"Failed to open file: {str(e)}"}
+            )
+
     def handle_stream_video_request(self):
         """Handle video streaming requests with range support for video players."""
         try:
             # Extract filename from URL and properly decode it
             import urllib.parse
-            encoded_filename = self.path.replace('/stream-video/', '')
+
+            encoded_filename = self.path.replace("/stream-video/", "")
             filename = urllib.parse.unquote(encoded_filename)
-            
+
             # Don't use basename as it strips content before slashes in the filename
             # Just join with the download path directly
             download_path = config.get_video_download_path()
             file_path = os.path.join(download_path, filename)
-            
+
+            # If file doesn't exist in root, search subdirectories
+            if not os.path.exists(file_path):
+                found = False
+                # Search in subdirectories
+                try:
+                    for item in os.listdir(download_path):
+                        subdir_path = os.path.join(download_path, item)
+                        if os.path.isdir(subdir_path):
+                            potential_path = os.path.join(subdir_path, filename)
+                            if os.path.exists(potential_path):
+                                file_path = potential_path
+                                found = True
+                                break
+                except (PermissionError, OSError):
+                    pass
+
+                if not found:
+                    self.send_error(404, "Video file not found")
+                    return
+
             # Security check - ensure the resolved path is within the download directory
             # This prevents directory traversal attacks
             file_path = os.path.abspath(file_path)
             download_path = os.path.abspath(download_path)
             if not file_path.startswith(download_path):
-                self.send_error(403, 'Access denied')
+                self.send_error(403, "Access denied")
                 return
-            
-            if not os.path.exists(file_path):
-                self.send_error(404, 'Video file not found')
-                return
-            
+
             # Get file info
             file_size = os.path.getsize(file_path)
-            
+
             # Check if client requested a range (for video seeking)
-            range_header = self.headers.get('Range')
-            
+            range_header = self.headers.get("Range")
+
             if range_header:
                 # Parse range header (e.g., "bytes=0-1023")
                 try:
-                    range_match = range_header.replace('bytes=', '').split('-')
+                    range_match = range_header.replace("bytes=", "").split("-")
                     start = int(range_match[0]) if range_match[0] else 0
                     end = int(range_match[1]) if range_match[1] else file_size - 1
-                    
+
                     # Ensure valid range
                     start = max(0, start)
                     end = min(file_size - 1, end)
                     content_length = end - start + 1
-                    
+
                     # Send partial content response
                     self.send_response(206)  # Partial Content
-                    self.send_header('Content-Range', f'bytes {start}-{end}/{file_size}')
-                    self.send_header('Accept-Ranges', 'bytes')
-                    self.send_header('Content-Length', str(content_length))
-                    
+                    self.send_header(
+                        "Content-Range", f"bytes {start}-{end}/{file_size}"
+                    )
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Length", str(content_length))
+
                 except (ValueError, IndexError):
                     # Invalid range, send full file
                     start = 0
                     end = file_size - 1
                     content_length = file_size
                     self.send_response(200)
-                    self.send_header('Content-Length', str(content_length))
+                    self.send_header("Content-Length", str(content_length))
             else:
                 # No range requested, send full file
                 start = 0
                 end = file_size - 1
                 content_length = file_size
                 self.send_response(200)
-                self.send_header('Content-Length', str(content_length))
-            
+                self.send_header("Content-Length", str(content_length))
+
             # Set appropriate headers for video streaming
-            if filename.lower().endswith('.mp4'):
-                self.send_header('Content-Type', 'video/mp4')
-            elif filename.lower().endswith('.webm'):
-                self.send_header('Content-Type', 'video/webm')
-            elif filename.lower().endswith('.avi'):
-                self.send_header('Content-Type', 'video/avi')
-            elif filename.lower().endswith('.mkv'):
-                self.send_header('Content-Type', 'video/x-matroska')
-            elif filename.lower().endswith('.mov'):
-                self.send_header('Content-Type', 'video/quicktime')
+            if filename.lower().endswith(".mp4"):
+                self.send_header("Content-Type", "video/mp4")
+            elif filename.lower().endswith(".webm"):
+                self.send_header("Content-Type", "video/webm")
+            elif filename.lower().endswith(".avi"):
+                self.send_header("Content-Type", "video/avi")
+            elif filename.lower().endswith(".mkv"):
+                self.send_header("Content-Type", "video/x-matroska")
+            elif filename.lower().endswith(".mov"):
+                self.send_header("Content-Type", "video/quicktime")
             else:
-                self.send_header('Content-Type', 'video/mp4')  # Default
-            
-            self.send_header('Cache-Control', 'no-cache')
-            self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header("Content-Type", "video/mp4")  # Default
+
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            
+
             # Stream the file content
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 f.seek(start)
                 remaining = content_length
                 chunk_size = 8192
-                
+
                 while remaining > 0:
                     chunk = f.read(min(chunk_size, remaining))
                     if not chunk:
                         break
-                    
+
                     try:
                         self.wfile.write(chunk)
                         remaining -= len(chunk)
                     except (ConnectionResetError, BrokenPipeError):
                         # Client disconnected
                         break
-                        
+
         except Exception as e:
             print(f" [!] Error streaming video: {e}")
             try:
-                self.send_error(500, f'Error streaming video: {str(e)}')
+                self.send_error(500, f"Error streaming video: {str(e)}")
             except Exception as send_error:
-                print(f"Warning: Could not send error response (connection likely closed): {send_error}")
-    
+                print(
+                    f"Warning: Could not send error response (connection likely closed): {send_error}"
+                )
+
     def handle_stop_server_request(self):
         """Handle server stop requests."""
         try:
             print(" [!] Shutdown request received from extension")
-            self.send_json_response({
-                'success': True,
-                'message': 'Server shutdown initiated'
-            })
-            
+            self.send_json_response(
+                {"success": True, "message": "Server shutdown initiated"}
+            )
+
             # Schedule server shutdown after sending response
             def shutdown_server():
                 time.sleep(1)  # Give time for response to be sent
                 print(" [+] Shutting down server...")
-                
+
                 # Cancel all active downloads
                 with download_lock:
                     for download_id, progress in list(active_downloads.items()):
-                        if progress.status in ['preparing', 'downloading', 'processing']:
+                        if progress.status in [
+                            "preparing",
+                            "downloading",
+                            "processing",
+                        ]:
                             progress.cancelled = True
-                            progress.status = 'cancelled'
+                            progress.status = "cancelled"
                     save_active_downloads()
-                
+
                 # Terminate all child processes
                 import signal
                 import os
                 import sys
-                
+
                 # Send termination signal to entire process group
                 try:
                     os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
                 except Exception as e:
                     print(f"Warning: Could not kill process group during shutdown: {e}")
-                
+
                 # Exit the process
                 sys.exit(0)
-            
+
             shutdown_thread = threading.Thread(target=shutdown_server)
             shutdown_thread.daemon = True
             shutdown_thread.start()
-            
+
         except Exception as e:
             print(f" [!] Error in stop server request: {e}")
-            self.send_json_response({'error': str(e)}, status=500)
-    
+            self.send_json_response({"error": str(e)}, status=500)
+
+    def handle_get_metadata_request(self):
+        """Handle request to get all video metadata."""
+        try:
+            metadata = get_video_metadata()
+            self.send_json_response({"success": True, "data": metadata.get_all_data()})
+        except Exception as e:
+            print(f" [!] Error getting metadata: {e}")
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
+
+    def handle_save_person_name_request(self):
+        """Handle request to save person name for a file."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+
+            filename = data.get("filename")
+            name = data.get("name", "")
+
+            if not filename:
+                self.send_json_response(
+                    {"success": False, "error": "Missing filename"}, status=400
+                )
+                return
+
+            metadata = get_video_metadata()
+            metadata.set_person_name(filename, name)
+
+            self.send_json_response({"success": True})
+        except json.JSONDecodeError:
+            self.send_json_response(
+                {"success": False, "error": "Invalid JSON"}, status=400
+            )
+        except Exception as e:
+            print(f" [!] Error saving person name: {e}")
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
+
+    def handle_save_tags_request(self):
+        """Handle request to save tags for a file."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+
+            filename = data.get("filename")
+            tags = data.get("tags", [])
+
+            if not filename:
+                self.send_json_response(
+                    {"success": False, "error": "Missing filename"}, status=400
+                )
+                return
+
+            metadata = get_video_metadata()
+            metadata.set_tags(filename, tags)
+
+            self.send_json_response({"success": True})
+        except json.JSONDecodeError:
+            self.send_json_response(
+                {"success": False, "error": "Invalid JSON"}, status=400
+            )
+        except Exception as e:
+            print(f" [!] Error saving tags: {e}")
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
+
+    def handle_import_metadata_request(self):
+        """Handle request to import metadata from localStorage."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+
+            person_names = data.get("personNames", {})
+            file_tags = data.get("fileTags", {})
+
+            metadata = get_video_metadata()
+            metadata.bulk_import(person_names, file_tags)
+
+            self.send_json_response(
+                {
+                    "success": True,
+                    "message": f"Imported {len(person_names)} names and {len(file_tags)} tag sets",
+                }
+            )
+        except json.JSONDecodeError:
+            self.send_json_response(
+                {"success": False, "error": "Invalid JSON"}, status=400
+            )
+        except Exception as e:
+            print(f" [!] Error importing metadata: {e}")
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
+
     def cleanup_partial_files(self, progress):
         """Clean up partial download files."""
         try:
             download_path = config.get_video_download_path()
             # Look for files that might be from this download
             for filename in os.listdir(download_path):
-                if filename.endswith('.part') or filename.endswith('.tmp'):
+                if filename.endswith(".part") or filename.endswith(".tmp"):
                     file_path = os.path.join(download_path, filename)
                     # Check if file was created recently (within last few minutes)
                     if time.time() - os.path.getctime(file_path) < 300:  # 5 minutes
@@ -1562,450 +1986,517 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             os.remove(file_path)
                             print(f" [+] Cleaned up partial file: {filename}")
                         except Exception as e:
-                            print(f"Warning: Could not remove partial file {filename}: {e}")
+                            print(
+                                f"Warning: Could not remove partial file {filename}: {e}"
+                            )
         except Exception as e:
             print(f" [!] Error cleaning up files: {e}")
-    
+
     def handle_current_folder_request(self):
         """Handle request for current download folder."""
         try:
             current_path = config.get_video_download_path()
-            self.send_json_response({
-                'status': 'success',
-                'folder': current_path,
-                'path': current_path  # Keep both for backward compatibility
-            })
+            self.send_json_response(
+                {
+                    "status": "success",
+                    "folder": current_path,
+                    "path": current_path,  # Keep both for backward compatibility
+                }
+            )
         except Exception as e:
             print(f" [!] Error getting current folder: {e}")
-            self.send_json_response({'status': 'error', 'error': str(e)}, status=500)
-    
+            self.send_json_response({"status": "error", "error": str(e)}, status=500)
+
     def handle_folder_selection_request(self):
         """Handle folder selection request."""
         try:
             import modules.folderSelector as folderSelector
             import modules.settings as settings
-            
+
             print(" [+] Opening folder selection dialog...")
             selected_folder = folderSelector.select_download_folder()
-            
+
             if selected_folder:
                 settings.set_download_path(selected_folder)
                 print(f" [+] Download folder changed to: {selected_folder}")
-                self.send_json_response({
-                    'success': True,
-                    'path': selected_folder
-                })
+                self.send_json_response({"success": True, "path": selected_folder})
             else:
                 print(" [!] Folder selection cancelled")
-                self.send_json_response({
-                    'success': False,
-                    'cancelled': True
-                })
-                
+                self.send_json_response({"success": False, "cancelled": True})
+
         except Exception as e:
             print(f" [!] Error in folder selection: {e}")
-            self.send_json_response({'error': str(e)}, status=500)
-    
+            self.send_json_response({"error": str(e)}, status=500)
+
     def handle_open_folder_request(self):
         """Handle request to open the download folder."""
         try:
             download_path = config.get_video_download_path()
-            
+
             print(f" [+] Opening download folder: {download_path}")
-            
+
             # Open folder using system-specific command
-            if sys.platform == 'darwin':  # macOS
-                subprocess.run(['open', download_path], check=True)
-            elif sys.platform == 'win32':  # Windows
-                subprocess.run(['explorer', download_path], check=True)
+            if sys.platform == "darwin":  # macOS
+                subprocess.run(["open", download_path], check=True)
+            elif sys.platform == "win32":  # Windows
+                subprocess.run(["explorer", download_path], check=True)
             else:  # Linux and other Unix-like systems
-                subprocess.run(['xdg-open', download_path], check=True)
-            
-            self.send_json_response({
-                'success': True,
-                'message': 'Folder opened successfully'
-            })
-            
+                subprocess.run(["xdg-open", download_path], check=True)
+
+            self.send_json_response(
+                {"success": True, "message": "Folder opened successfully"}
+            )
+
         except subprocess.CalledProcessError as e:
             error_msg = f"Failed to open folder: {e}"
             print(f" [!] {error_msg}")
-            self.send_json_response({'error': error_msg}, status=500)
+            self.send_json_response({"error": error_msg}, status=500)
         except Exception as e:
             error_msg = f"Error opening folder: {e}"
             print(f" [!] {error_msg}")
-            self.send_json_response({'error': error_msg}, status=500)
-    
+            self.send_json_response({"error": error_msg}, status=500)
+
     def handle_download_request(self):
         """Handle download requests from Chrome extension."""
         try:
             # Get request body
-            content_length = int(self.headers.get('Content-Length', 0))
+            content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
-            
+
             # Parse JSON data
-            data = json.loads(post_data.decode('utf-8'))
-            url = data.get('url')
-            raw_title = data.get('title', 'Unknown')
+            data = json.loads(post_data.decode("utf-8"))
+            url = data.get("url")
+            raw_title = data.get("title", "Unknown")
             # Clean the title to remove "NA - " and other unwanted prefixes
             import modules.utilities as utilities
+
             title = utilities.clean_video_title(raw_title)
-            open_folder = data.get('openFolder', True)
-            
+            open_folder = data.get("openFolder", True)
+
             if not url:
-                self.send_json_response({'error': 'No URL provided'}, status=400)
+                self.send_json_response({"error": "No URL provided"}, status=400)
                 return
-            
+
             # Check for duplicate URL in failed downloads
             existing_download_id, existing_download = find_existing_failed_download(url)
             if existing_download_id:
                 # Log the duplicate attempt for developer analysis
-                log_duplicate_attempt(url, title, existing_download_id, existing_download)
-                
+                log_duplicate_attempt(
+                    url, title, existing_download_id, existing_download
+                )
+
                 # Instead of creating a new download, increment retry count and update the existing one
-                existing_download['retry_count'] = existing_download.get('retry_count', 0) + 1
-                existing_download['last_retry_attempt'] = time.time()
-                existing_download['last_retry_title'] = title  # Update title in case it changed
+                existing_download["retry_count"] = (
+                    existing_download.get("retry_count", 0) + 1
+                )
+                existing_download["last_retry_attempt"] = time.time()
+                existing_download["last_retry_title"] = (
+                    title  # Update title in case it changed
+                )
                 save_failed_downloads()
-                
+
                 # Return a response indicating this is a retry of an existing failed download
-                self.send_json_response({
-                    'success': False,
-                    'is_duplicate': True,
-                    'message': f'This URL already failed {existing_download["retry_count"]} time(s). Original error: {existing_download.get("error", "Unknown error")}',
-                    'existing_download_id': existing_download_id,
-                    'original_error': existing_download.get('error'),
-                    'retry_count': existing_download['retry_count'],
-                    'url': url,
-                    'title': title
-                })
+                self.send_json_response(
+                    {
+                        "success": False,
+                        "is_duplicate": True,
+                        "message": f"This URL already failed {existing_download['retry_count']} time(s). Original error: {existing_download.get('error', 'Unknown error')}",
+                        "existing_download_id": existing_download_id,
+                        "original_error": existing_download.get("error"),
+                        "retry_count": existing_download["retry_count"],
+                        "url": url,
+                        "title": title,
+                    }
+                )
                 return
-            
+
             # Generate unique download ID
             download_id = str(uuid.uuid4())
-            
+
             # Track this URL in the URL tracker
             tracker = get_tracker()
             url_track_id = tracker.add_url(url, title)
-            
+
             # Create progress tracker
             progress = DownloadProgress(download_id, url, title)
             progress.url_track_id = url_track_id
-            
+
             with download_lock:
                 active_downloads[download_id] = progress
                 save_active_downloads()
-            
+
             server_logger.info(f"Chrome Extension Request: {title}")
             server_logger.info(f"URL: {url}")
             server_logger.info(f"Download ID: {download_id}")
             print(f" [+] Chrome Extension Request: {title}")
             print(f" [+] URL: {url}")
             print(f" [+] Download ID: {download_id}")
-            
+
             # Start download in background thread
             download_thread = threading.Thread(
-                target=self.download_video_with_progress,
-                args=(progress, open_folder)
+                target=self.download_video_with_progress, args=(progress, open_folder)
             )
             download_thread.daemon = True
             download_thread.start()
-            
+
             # Return immediate response with download ID
-            self.send_json_response({
-                'success': True,
-                'message': 'Download started',
-                'downloadId': download_id,
-                'url': url,
-                'title': title
-            })
-            
+            self.send_json_response(
+                {
+                    "success": True,
+                    "message": "Download started",
+                    "downloadId": download_id,
+                    "url": url,
+                    "title": title,
+                }
+            )
+
         except json.JSONDecodeError:
-            self.send_json_response({'error': 'Invalid JSON data'}, status=400)
+            self.send_json_response({"error": "Invalid JSON data"}, status=400)
         except Exception as e:
             print(f" [!] Error handling download request: {e}")
-            self.send_json_response({'error': str(e)}, status=500)
-    
+            self.send_json_response({"error": str(e)}, status=500)
+
     def download_video_with_progress(self, progress, open_folder):
         """Download video with progress tracking."""
         try:
             download_path = config.get_video_download_path()
-            
+
             # Ensure download directory exists
             os.makedirs(download_path, exist_ok=True)
-            
-            progress.status = 'preparing'
+
+            progress.status = "preparing"
             progress.percent = 5.0
             print(f" [+] Starting download: {progress.title}")
             print(f" [+] URL: {progress.url}")
-            
+
             # Store the current thread so we can interrupt it
             progress.download_thread = threading.current_thread()
-            
+
             try:
                 print(f" [+] Creating yt-dlp instance...")
                 progress.percent = 10.0
-                
+
                 # Create yt-dlp options with progress hook and anti-detection settings
                 ydl_opts = {
-                    'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
-                    'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-                    'socket_timeout': 180,  # 3 minutes socket timeout for slow CDNs
-                    'retries': 5,  # Retry 5 times on failure
-                    'fragment_retries': 5,  # Retry fragments 5 times
-                    'file_access_retries': 3,  # Retry file access
-                    'verbose': True,  # Add verbose logging
-                    'no_warnings': False,  # Show warnings
-                    
+                    "outtmpl": os.path.join(
+                        download_path, config.DEFAULT_OUTPUT_TEMPLATE
+                    ),
+                    "progress_hooks": [lambda d: self.progress_hook(d, progress)],
+                    "socket_timeout": 180,  # 3 minutes socket timeout for slow CDNs
+                    "retries": 5,  # Retry 5 times on failure
+                    "fragment_retries": 5,  # Retry fragments 5 times
+                    "file_access_retries": 3,  # Retry file access
+                    "verbose": True,  # Add verbose logging
+                    "no_warnings": False,  # Show warnings
                     # Anti-detection measures
-                    'sleep_interval_requests': 2,  # Sleep 2 seconds between requests
-                    'sleep_interval_subtitles': 1,  # Sleep 1 second between subtitle requests
-                    'sleep_interval': 1,  # General sleep interval
-                    
+                    "sleep_interval_requests": 2,  # Sleep 2 seconds between requests
+                    "sleep_interval_subtitles": 1,  # Sleep 1 second between subtitle requests
+                    "sleep_interval": 1,  # General sleep interval
                     # Realistic browser headers to avoid detection
-                    'http_headers': {
-                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.9',
-                        'Accept-Encoding': 'gzip, deflate, br',
-                        'Connection': 'keep-alive',
-                        'Upgrade-Insecure-Requests': '1',
-                        'Sec-Fetch-Dest': 'document',
-                        'Sec-Fetch-Mode': 'navigate',
-                        'Sec-Fetch-Site': 'none',
-                        'Sec-Fetch-User': '?1',
-                        'Cache-Control': 'max-age=0',
-                        'Referer': progress.url,  # Set referer to the video page
+                    "http_headers": {
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                        "Sec-Fetch-User": "?1",
+                        "Cache-Control": "max-age=0",
+                        "Referer": progress.url,  # Set referer to the video page
                     },
-                    
                     # Cookie handling for session management
-                    'cookiefile': None,  # Don't save cookies to file
-                    'cookiesfrombrowser': None,  # Don't use browser cookies
-                    
+                    "cookiefile": None,  # Don't save cookies to file
+                    "cookiesfrombrowser": None,  # Don't use browser cookies
                     # Additional anti-detection
-                    'no_check_certificate': False,  # Verify SSL certificates
-                    'prefer_insecure': False,  # Prefer HTTPS
-                    'geo_bypass': True,  # Try to bypass geo-restrictions
-                    'geo_bypass_country': 'US',  # Pretend to be in US
-                    
+                    "no_check_certificate": False,  # Verify SSL certificates
+                    "prefer_insecure": False,  # Prefer HTTPS
+                    "geo_bypass": True,  # Try to bypass geo-restrictions
+                    "geo_bypass_country": "US",  # Pretend to be in US
                     # CDN-specific optimizations
-                    'external_downloader_args': {
-                        'default': ['--retry-connrefused', '--retry', '5', '--timeout', '300', '--limit-rate', '1M']
-                    }
+                    "external_downloader_args": {
+                        "default": [
+                            "--retry-connrefused",
+                            "--retry",
+                            "5",
+                            "--timeout",
+                            "300",
+                            "--limit-rate",
+                            "1M",
+                        ]
+                    },
                 }
-                
+
                 # Apply site-specific settings for better compatibility
-                if 'youtube.com' in progress.url or 'youtu.be' in progress.url:
-                    server_logger.info(f"Detected YouTube URL, applying specific configuration")
-                    print(f" [+] Detected YouTube URL, applying YouTube-specific configuration...")
-                    ydl_opts['extractor_args'] = {
-                        'youtube': {
-                            'player_client': ['android'],  # Use Android client for better compatibility
+                if "youtube.com" in progress.url or "youtu.be" in progress.url:
+                    server_logger.info(
+                        f"Detected YouTube URL, applying specific configuration"
+                    )
+                    print(
+                        f" [+] Detected YouTube URL, applying YouTube-specific configuration..."
+                    )
+                    ydl_opts["extractor_args"] = {
+                        "youtube": {
+                            "player_client": [
+                                "android"
+                            ],  # Use Android client for better compatibility
                         }
                     }
-                elif 'pornhub.com' in progress.url:
-                    server_logger.info(f"Detected Pornhub URL, applying specific configuration")
-                    print(f" [+] Detected Pornhub URL, applying Pornhub-specific configuration...")
+                elif "pornhub.com" in progress.url:
+                    server_logger.info(
+                        f"Detected Pornhub URL, applying specific configuration"
+                    )
+                    print(
+                        f" [+] Detected Pornhub URL, applying Pornhub-specific configuration..."
+                    )
                     # Add more aggressive extraction options for Pornhub
-                    ydl_opts.update({
-                        'extractor_args': {
-                            'pornhub': {
-                                'cookiesfrombrowser': None,
-                            }
-                        },
-                        # More aggressive retry settings for problematic sites
-                        'retries': 10,
-                        'fragment_retries': 10,
-                        # Try to bypass potential blocks
-                        'sleep_interval_requests': 3,
-                        # Use different user agent
-                        'http_headers': {
-                            **ydl_opts['http_headers'],
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                            'Accept': '*/*',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'Referer': 'https://www.pornhub.com/',
+                    ydl_opts.update(
+                        {
+                            "extractor_args": {
+                                "pornhub": {
+                                    "cookiesfrombrowser": None,
+                                }
+                            },
+                            # More aggressive retry settings for problematic sites
+                            "retries": 10,
+                            "fragment_retries": 10,
+                            # Try to bypass potential blocks
+                            "sleep_interval_requests": 3,
+                            # Use different user agent
+                            "http_headers": {
+                                **ydl_opts["http_headers"],
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "*/*",
+                                "Accept-Language": "en-US,en;q=0.9",
+                                "Referer": "https://www.pornhub.com/",
+                            },
                         }
-                    })
-                elif 'xhamster.com' in progress.url:
-                    server_logger.info(f"Detected XHamster URL, applying specific configuration")
-                    print(f" [+] Detected XHamster URL, applying XHamster-specific configuration...")
+                    )
+                elif "xhamster.com" in progress.url:
+                    server_logger.info(
+                        f"Detected XHamster URL, applying specific configuration"
+                    )
+                    print(
+                        f" [+] Detected XHamster URL, applying XHamster-specific configuration..."
+                    )
                     # Add XHamster-specific configuration to handle title extraction issues
-                    ydl_opts.update({
-                        'retries': 15,
-                        'fragment_retries': 15,
-                        'sleep_interval_requests': 2,
-                        'socket_timeout': 300,
-                        'http_headers': {
-                            **ydl_opts['http_headers'],
-                            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                            'Accept-Language': 'en-us,en;q=0.5',
-                            'Accept-Encoding': 'gzip,deflate',
-                            'Connection': 'keep-alive',
-                            'Upgrade-Insecure-Requests': '1',
-                            'Referer': 'https://xhamster.com/',
-                        },
-                        # Disable SSL verification if needed and use alternate extraction
-                        'nocheckcertificate': True,
-                        'ignoreerrors': False,
-                        'no_warnings': False,
-                    })
-                elif 'eporner.com' in progress.url:
-                    server_logger.info(f"Detected Eporner URL, applying specific configuration")
-                    print(f" [+] Detected Eporner URL, applying Eporner-specific configuration...")
+                    ydl_opts.update(
+                        {
+                            "retries": 15,
+                            "fragment_retries": 15,
+                            "sleep_interval_requests": 2,
+                            "socket_timeout": 300,
+                            "http_headers": {
+                                **ydl_opts["http_headers"],
+                                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-us,en;q=0.5",
+                                "Accept-Encoding": "gzip,deflate",
+                                "Connection": "keep-alive",
+                                "Upgrade-Insecure-Requests": "1",
+                                "Referer": "https://xhamster.com/",
+                            },
+                            # Disable SSL verification if needed and use alternate extraction
+                            "nocheckcertificate": True,
+                            "ignoreerrors": False,
+                            "no_warnings": False,
+                        }
+                    )
+                elif "eporner.com" in progress.url:
+                    server_logger.info(
+                        f"Detected Eporner URL, applying specific configuration"
+                    )
+                    print(
+                        f" [+] Detected Eporner URL, applying Eporner-specific configuration..."
+                    )
                     # Add Eporner-specific configuration to handle hash extraction issues
-                    ydl_opts.update({
-                        'retries': 20,
-                        'fragment_retries': 20,
-                        'sleep_interval_requests': 3,
-                        'socket_timeout': 300,
-                        'http_headers': {
-                            **ydl_opts['http_headers'],
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'Accept-Encoding': 'gzip, deflate, br',
-                            'Connection': 'keep-alive',
-                            'Upgrade-Insecure-Requests': '1',
-                            'Sec-Fetch-Dest': 'document',
-                            'Sec-Fetch-Mode': 'navigate',
-                            'Sec-Fetch-Site': 'none',
-                            'Sec-Fetch-User': '?1',
-                            'Cache-Control': 'max-age=0',
-                            'Referer': 'https://www.eporner.com/',
-                        },
-                        'nocheckcertificate': False,
-                        'ignoreerrors': True,  # Try to continue on errors
-                        'no_warnings': False,
-                        'writesubtitles': False,
-                        'writeautomaticsub': False,
-                    })
-                
+                    ydl_opts.update(
+                        {
+                            "retries": 20,
+                            "fragment_retries": 20,
+                            "sleep_interval_requests": 3,
+                            "socket_timeout": 300,
+                            "http_headers": {
+                                **ydl_opts["http_headers"],
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                                "Accept-Language": "en-US,en;q=0.9",
+                                "Accept-Encoding": "gzip, deflate, br",
+                                "Connection": "keep-alive",
+                                "Upgrade-Insecure-Requests": "1",
+                                "Sec-Fetch-Dest": "document",
+                                "Sec-Fetch-Mode": "navigate",
+                                "Sec-Fetch-Site": "none",
+                                "Sec-Fetch-User": "?1",
+                                "Cache-Control": "max-age=0",
+                                "Referer": "https://www.eporner.com/",
+                            },
+                            "nocheckcertificate": False,
+                            "ignoreerrors": True,  # Try to continue on errors
+                            "no_warnings": False,
+                            "writesubtitles": False,
+                            "writeautomaticsub": False,
+                        }
+                    )
+
                 print(f" [+] yt-dlp options configured")
                 progress.percent = 15.0
-                
+
                 print(f" [+] Initializing YoutubeDL instance...")
-                
+
                 # Download with yt-dlp
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     if progress.cancelled:
                         print(f" [!] Download cancelled before start: {progress.title}")
                         return
-                    
+
                     print(f" [+] YoutubeDL instance created successfully")
-                    progress.status = 'downloading'
+                    progress.status = "downloading"
                     progress.percent = 20.0
-                    
+
                     print(f" [+] Starting extract_info for URL: {progress.url}")
-                    
+
                     # This is where it might hang - let's add a timeout mechanism
-                    info = ydl.extract_info(progress.url, download=False)  # First just get info
+                    info = ydl.extract_info(
+                        progress.url, download=False
+                    )  # First just get info
                     # Clean the extracted title
                     import modules.utilities as utilities
-                    raw_extracted_title = info.get('title', 'Unknown')
+
+                    raw_extracted_title = info.get("title", "Unknown")
                     cleaned_title = utilities.clean_video_title(raw_extracted_title)
                     print(f" [+] Successfully extracted video info: {cleaned_title}")
                     # Update progress title with cleaned version
                     progress.title = cleaned_title
                     progress.percent = 50.0
-                    
+
                     if progress.cancelled:
-                        print(f" [!] Download cancelled after info extraction: {progress.title}")
+                        print(
+                            f" [!] Download cancelled after info extraction: {progress.title}"
+                        )
                         return
-                    
+
                     print(f" [+] Beginning actual download...")
-                    ydl.extract_info(progress.url, download=True)  # Now actually download
+                    ydl.extract_info(
+                        progress.url, download=True
+                    )  # Now actually download
                     print(f" [+] Download completed successfully: {progress.title}")
-                    
+
             except yt_dlp.utils.ExtractorError as e:
                 print(f" [!] Extractor error: {e}")
                 # Try fallback approach for XHamster
-                if 'xhamster.com' in progress.url and ('unable to download video data' in str(e).lower() or 'unable to extract title' in str(e).lower()):
+                if "xhamster.com" in progress.url and (
+                    "unable to download video data" in str(e).lower()
+                    or "unable to extract title" in str(e).lower()
+                ):
                     print(f" [+] Attempting manual XHamster extraction...")
                     try:
                         import requests
                         import re
-                        
+
                         # Get page content
-                        response = requests.get(progress.url, 
+                        response = requests.get(
+                            progress.url,
                             headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'en-US,en;q=0.9',
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-US,en;q=0.9",
                             },
-                            timeout=30)
-                        
+                            timeout=30,
+                        )
+
                         # Extract M3U8 video URL patterns from XHamster
                         m3u8_patterns = [
                             r'video-cf\.xhcdn\.com[^"\']*\.m3u8[^"\']*',
                             r'preload[^>]*href=["\']([^"\']*\.m3u8[^"\']*)["\']',
                             r'"file"\s*:\s*"([^"]+\.m3u8[^"]*)"',
                         ]
-                        
+
                         video_url = None
                         for pattern in m3u8_patterns:
                             matches = re.findall(pattern, response.text, re.IGNORECASE)
                             if matches:
-                                video_url = matches[0] if isinstance(matches[0], str) else matches[0]
+                                video_url = (
+                                    matches[0]
+                                    if isinstance(matches[0], str)
+                                    else matches[0]
+                                )
                                 # Ensure URL is properly formatted
-                                if not video_url.startswith('http'):
-                                    video_url = 'https://' + video_url
+                                if not video_url.startswith("http"):
+                                    video_url = "https://" + video_url
                                 break
-                        
+
                         # Extract title from page
-                        title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
+                        title_match = re.search(
+                            r"<title[^>]*>([^<]+)</title>", response.text, re.IGNORECASE
+                        )
                         video_title = "XHamster_Video"
                         if title_match:
                             title = title_match.group(1)
                             # Clean title for filename
-                            video_title = utilities.clean_video_title(title.split(' - ')[0])
+                            video_title = utilities.clean_video_title(
+                                title.split(" - ")[0]
+                            )
                             progress.title = video_title  # Update progress title
-                        
+
                         if video_url:
                             print(f" [+] Found direct M3U8 URL, downloading...")
-                            
+
                             # Create options for M3U8 download
                             direct_opts = {
-                                'outtmpl': os.path.join(config.get_video_download_path(), f'{video_title}.%(ext)s'),
-                                'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-                                'http_headers': {
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                    'Referer': 'https://xhamster.com/',
-                                }
+                                "outtmpl": os.path.join(
+                                    config.get_video_download_path(),
+                                    f"{video_title}.%(ext)s",
+                                ),
+                                "progress_hooks": [
+                                    lambda d: self.progress_hook(d, progress)
+                                ],
+                                "http_headers": {
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                    "Referer": "https://xhamster.com/",
+                                },
                             }
-                            
+
                             with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
                                 direct_ydl.extract_info(video_url, download=True)
-                            
+
                             print(f" [+] Manual XHamster extraction successful!")
                             return  # Success, exit the function
                         else:
                             print(f" [!] Could not find M3U8 URL in page content")
-                            
+
                     except Exception as manual_e:
                         print(f" [!] Manual XHamster extraction failed: {manual_e}")
                         # Continue to try other fallbacks
-                
+
                 # Try fallback approach for Pornhub
-                elif 'pornhub.com' in progress.url and 'Unable to extract title' in str(e):
+                elif "pornhub.com" in progress.url and "Unable to extract title" in str(
+                    e
+                ):
                     print(f" [+] Attempting Pornhub fallback extraction...")
                     try:
                         fallback_opts = {
                             **ydl_opts,
-                            'format': 'best',
-                            'ignoreerrors': False,
-                            'http_headers': {
-                                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'en-us,en;q=0.5',
-                                'Accept-Encoding': 'gzip,deflate',
-                                'Connection': 'keep-alive',
-                                'Upgrade-Insecure-Requests': '1',
-                            }
+                            "format": "best",
+                            "ignoreerrors": False,
+                            "http_headers": {
+                                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-us,en;q=0.5",
+                                "Accept-Encoding": "gzip,deflate",
+                                "Connection": "keep-alive",
+                                "Upgrade-Insecure-Requests": "1",
+                            },
                         }
                         with yt_dlp.YoutubeDL(fallback_opts) as fallback_ydl:
-                            info = fallback_ydl.extract_info(progress.url, download=False)
-                            print(f" [+] Fallback extraction successful: {info.get('title', 'Unknown')}")
+                            info = fallback_ydl.extract_info(
+                                progress.url, download=False
+                            )
+                            print(
+                                f" [+] Fallback extraction successful: {info.get('title', 'Unknown')}"
+                            )
                             fallback_ydl.extract_info(progress.url, download=True)
                             print(f" [+] Fallback download completed successfully")
                             return  # Success, exit the function
@@ -2017,68 +2508,88 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             except yt_dlp.utils.DownloadError as e:
                 print(f" [!] Download error: {e}")
                 # Try manual extraction for XHamster on download errors (like HTTP 404)
-                if 'xhamster.com' in progress.url and ('unable to download video data' in str(e).lower() or 'http error 404' in str(e).lower()):
-                    print(f" [+] Attempting manual XHamster extraction for download error...")
+                if "xhamster.com" in progress.url and (
+                    "unable to download video data" in str(e).lower()
+                    or "http error 404" in str(e).lower()
+                ):
+                    print(
+                        f" [+] Attempting manual XHamster extraction for download error..."
+                    )
                     try:
                         import requests
                         import re
-                        
+
                         # Get page content
-                        response = requests.get(progress.url, 
+                        response = requests.get(
+                            progress.url,
                             headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'en-US,en;q=0.9',
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-US,en;q=0.9",
                             },
-                            timeout=30)
-                        
+                            timeout=30,
+                        )
+
                         # Extract M3U8 video URL patterns from XHamster
                         m3u8_patterns = [
                             r'video-cf\.xhcdn\.com[^"\']*\.m3u8[^"\']*',
                             r'preload[^>]*href=["\']([^"\']*\.m3u8[^"\']*)["\']',
                             r'"file"\s*:\s*"([^"]+\.m3u8[^"]*)"',
                         ]
-                        
+
                         video_url = None
                         for pattern in m3u8_patterns:
                             matches = re.findall(pattern, response.text, re.IGNORECASE)
                             if matches:
-                                video_url = matches[0] if isinstance(matches[0], str) else matches[0]
+                                video_url = (
+                                    matches[0]
+                                    if isinstance(matches[0], str)
+                                    else matches[0]
+                                )
                                 # Ensure URL is properly formatted
-                                if not video_url.startswith('http'):
-                                    video_url = 'https://' + video_url
+                                if not video_url.startswith("http"):
+                                    video_url = "https://" + video_url
                                 break
-                        
+
                         # Extract title from page
-                        title_match = re.search(r'<title[^>]*>([^<]+)</title>', response.text, re.IGNORECASE)
+                        title_match = re.search(
+                            r"<title[^>]*>([^<]+)</title>", response.text, re.IGNORECASE
+                        )
                         video_title = "XHamster_Video"
                         if title_match:
                             title = title_match.group(1)
                             # Clean title for filename
-                            video_title = utilities.clean_video_title(title.split(' - ')[0])
+                            video_title = utilities.clean_video_title(
+                                title.split(" - ")[0]
+                            )
                             progress.title = video_title  # Update progress title
-                        
+
                         if video_url:
                             print(f" [+] Found direct M3U8 URL, downloading...")
-                            
+
                             # Create options for M3U8 download
                             direct_opts = {
-                                'outtmpl': os.path.join(config.get_video_download_path(), f'{video_title}.%(ext)s'),
-                                'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-                                'http_headers': {
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                    'Referer': 'https://xhamster.com/',
-                                }
+                                "outtmpl": os.path.join(
+                                    config.get_video_download_path(),
+                                    f"{video_title}.%(ext)s",
+                                ),
+                                "progress_hooks": [
+                                    lambda d: self.progress_hook(d, progress)
+                                ],
+                                "http_headers": {
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                    "Referer": "https://xhamster.com/",
+                                },
                             }
-                            
+
                             with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
                                 direct_ydl.extract_info(video_url, download=True)
-                            
+
                             print(f" [+] Manual XHamster extraction successful!")
                             return  # Success, exit the function
                         else:
                             print(f" [!] Could not find M3U8 URL in page content")
-                            
+
                     except Exception as manual_e:
                         print(f" [!] Manual XHamster extraction failed: {manual_e}")
                         raise e  # Raise original error
@@ -2088,217 +2599,263 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 print(f" [!] Unexpected error during download: {e}")
                 print(f" [!] Error type: {type(e).__name__}")
                 raise
-            
+
             if not progress.cancelled:
-                progress.status = 'completed'
+                progress.status = "completed"
                 progress.percent = 100.0
                 print(f" [+] Download completed: {progress.title}")
-                
+
                 # Store file metadata with source URL
                 try:
                     file_metadata = get_file_metadata()
                     # Find the downloaded file(s) and store metadata
-                    download_path = config.get_download_path()
+                    download_path = config.get_video_download_path()
                     for filename in os.listdir(download_path):
                         # Check if this file matches the download (basic matching)
-                        if any(word.lower() in filename.lower() for word in progress.title.split() if len(word) > 3):
-                            if not filename.endswith(('.part', '.ytdl', '.temp')):
-                                file_metadata.add_file(filename, progress.url, progress.title)
+                        if any(
+                            word.lower() in filename.lower()
+                            for word in progress.title.split()
+                            if len(word) > 3
+                        ):
+                            if not filename.endswith((".part", ".ytdl", ".temp")):
+                                file_metadata.add_file(
+                                    filename, progress.url, progress.title
+                                )
                                 print(f" [+] Stored metadata for file: {filename}")
                 except Exception as e:
                     print(f" [!] Error storing file metadata: {e}")
-                
+
                 # Mark as completed in URL tracker
-                if hasattr(progress, 'url_track_id'):
+                if hasattr(progress, "url_track_id"):
                     tracker = get_tracker()
                     tracker.mark_completed(progress.url_track_id)
-                
+
                 # Save the final state
                 with download_lock:
                     save_active_downloads()
-                
+
                 # Auto-cleanup matching partial files
                 try:
                     removed_files = auto_cleanup_matching_partial_files(progress.title)
                     if removed_files:
-                        print(f" [+] Auto-cleaned {len(removed_files)} matching partial files: {', '.join(removed_files)}")
+                        print(
+                            f" [+] Auto-cleaned {len(removed_files)} matching partial files: {', '.join(removed_files)}"
+                        )
                 except Exception as e:
                     print(f" [!] Error during auto-cleanup: {e}")
-                
+
                 # Open finder on macOS if requested - DISABLED
                 # if open_folder and sys.platform == 'darwin':
                 #     videoDownloader.open_finder(download_path)
-            
+
         except (yt_dlp.DownloadError, AttributeError) as e:
             error_msg = str(e)
-            server_logger.error(f"yt-dlp Download error for {progress.url}: {error_msg}")
+            server_logger.error(
+                f"yt-dlp Download error for {progress.url}: {error_msg}"
+            )
             print(f" [!] yt-dlp Download error: {error_msg}")
-            
+
             # Reset progress on error
             progress.percent = 0.0
-            
+
             # Try fallback approach for Pornhub, XHamster, and Eporner
-            if ('pornhub.com' in progress.url or 'xhamster.com' in progress.url or 'eporner.com' in progress.url) and ('Unable to extract title' in error_msg or 'Unable to extract hash' in error_msg or isinstance(e, AttributeError)):
-                if 'eporner.com' in progress.url:
-                    site_name = 'Eporner'
-                elif 'xhamster.com' in progress.url:
-                    site_name = 'XHamster'
+            if (
+                "pornhub.com" in progress.url
+                or "xhamster.com" in progress.url
+                or "eporner.com" in progress.url
+            ) and (
+                "Unable to extract title" in error_msg
+                or "Unable to extract hash" in error_msg
+                or isinstance(e, AttributeError)
+            ):
+                if "eporner.com" in progress.url:
+                    site_name = "Eporner"
+                elif "xhamster.com" in progress.url:
+                    site_name = "XHamster"
                 else:
-                    site_name = 'Pornhub'
+                    site_name = "Pornhub"
                 print(f" [+] Attempting {site_name} fallback extraction...")
                 progress.percent = 25.0  # Show some progress for fallback attempt
                 try:
                     # Create site-specific fallback options
-                    if 'eporner.com' in progress.url:
+                    if "eporner.com" in progress.url:
                         fallback_opts = {
-                            'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
-                            'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-                            'format': 'best',
-                            'quiet': False,
-                            'no_warnings': False,
-                            'retries': 25,
-                            'fragment_retries': 25,
-                            'socket_timeout': 600,
-                            'http_headers': {
-                                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                                'Accept': '*/*',
-                                'Accept-Language': 'en-US,en;q=0.5',
-                                'Accept-Encoding': 'gzip, deflate',
-                                'Connection': 'keep-alive',
-                                'Upgrade-Insecure-Requests': '1',
-                                'Referer': 'https://www.eporner.com/',
+                            "outtmpl": os.path.join(
+                                download_path, config.DEFAULT_OUTPUT_TEMPLATE
+                            ),
+                            "progress_hooks": [
+                                lambda d: self.progress_hook(d, progress)
+                            ],
+                            "format": "best",
+                            "quiet": False,
+                            "no_warnings": False,
+                            "retries": 25,
+                            "fragment_retries": 25,
+                            "socket_timeout": 600,
+                            "http_headers": {
+                                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "*/*",
+                                "Accept-Language": "en-US,en;q=0.5",
+                                "Accept-Encoding": "gzip, deflate",
+                                "Connection": "keep-alive",
+                                "Upgrade-Insecure-Requests": "1",
+                                "Referer": "https://www.eporner.com/",
                             },
-                            'sleep_interval_requests': 5,
-                            'ignoreerrors': True,
-                            'extract_flat': False,
-                            'writesubtitles': False,
-                            'writeautomaticsub': False,
+                            "sleep_interval_requests": 5,
+                            "ignoreerrors": True,
+                            "extract_flat": False,
+                            "writesubtitles": False,
+                            "writeautomaticsub": False,
                         }
                     else:
                         # Original fallback for Pornhub/XHamster
                         fallback_opts = {
-                            'outtmpl': os.path.join(download_path, config.DEFAULT_OUTPUT_TEMPLATE),
-                            'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-                            'format': 'best',
-                            'quiet': False,
-                            'no_warnings': False,
-                            'retries': 15,
-                            'fragment_retries': 15,
-                            'socket_timeout': 300,
-                            'http_headers': {
-                                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'en-us,en;q=0.5',
-                                'Accept-Encoding': 'gzip,deflate',
-                                'Connection': 'keep-alive',
-                                'Upgrade-Insecure-Requests': '1',
-                                'Referer': 'https://www.pornhub.com/' if 'pornhub.com' in progress.url else 'https://xhamster.com/',
+                            "outtmpl": os.path.join(
+                                download_path, config.DEFAULT_OUTPUT_TEMPLATE
+                            ),
+                            "progress_hooks": [
+                                lambda d: self.progress_hook(d, progress)
+                            ],
+                            "format": "best",
+                            "quiet": False,
+                            "no_warnings": False,
+                            "retries": 15,
+                            "fragment_retries": 15,
+                            "socket_timeout": 300,
+                            "http_headers": {
+                                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-us,en;q=0.5",
+                                "Accept-Encoding": "gzip,deflate",
+                                "Connection": "keep-alive",
+                                "Upgrade-Insecure-Requests": "1",
+                                "Referer": "https://www.pornhub.com/"
+                                if "pornhub.com" in progress.url
+                                else "https://xhamster.com/",
                             },
-                            'sleep_interval_requests': 5,
-                            'extractor_args': {
-                                'generic': {
-                                    'default_search': 'auto'
-                                }
-                            }
+                            "sleep_interval_requests": 5,
+                            "extractor_args": {"generic": {"default_search": "auto"}},
                         }
                     with yt_dlp.YoutubeDL(fallback_opts) as fallback_ydl:
                         print(f" [+] Trying fallback extraction...")
                         progress.percent = 40.0
                         info = fallback_ydl.extract_info(progress.url, download=False)
-                        print(f" [+] Fallback extraction successful: {info.get('title', 'Unknown')}")
+                        print(
+                            f" [+] Fallback extraction successful: {info.get('title', 'Unknown')}"
+                        )
                         progress.percent = 60.0
                         fallback_ydl.extract_info(progress.url, download=True)
                         print(f" [+] Fallback download completed successfully")
-                        progress.status = 'completed'
+                        progress.status = "completed"
                         progress.percent = 100.0
-                        
+
                         # Mark as completed in URL tracker
-                        if hasattr(progress, 'url_track_id'):
+                        if hasattr(progress, "url_track_id"):
                             tracker = get_tracker()
                             tracker.mark_completed(progress.url_track_id)
-                        
+
                         # Auto-cleanup matching partial files
                         try:
-                            removed_files = auto_cleanup_matching_partial_files(progress.title)
+                            removed_files = auto_cleanup_matching_partial_files(
+                                progress.title
+                            )
                             if removed_files:
-                                print(f" [+] Auto-cleaned {len(removed_files)} matching partial files: {', '.join(removed_files)}")
+                                print(
+                                    f" [+] Auto-cleaned {len(removed_files)} matching partial files: {', '.join(removed_files)}"
+                                )
                         except Exception as e:
                             print(f" [!] Error during auto-cleanup: {e}")
-                        
+
                         return  # Success, exit the function
                 except Exception as fallback_e:
                     print(f" [!] Fallback also failed: {fallback_e}")
-                    
+
                     # Last resort for Eporner: manual video URL extraction
-                    if 'eporner.com' in progress.url:
+                    if "eporner.com" in progress.url:
                         print(f" [+] Attempting manual Eporner video URL extraction...")
                         progress.percent = 50.0
                         try:
                             import requests
                             import re
-                            
+
                             # Get page content
-                            response = requests.get(progress.url, 
-                                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'},
-                                timeout=30)
-                            
+                            response = requests.get(
+                                progress.url,
+                                headers={
+                                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                                },
+                                timeout=30,
+                            )
+
                             # Extract video URL patterns
                             video_patterns = [
-                                r'\"(https?://[^\"]*gvideo\.eporner\.com[^\"]*\.mp4[^\"]*?)\"',
-                                r'video_url[\"\']\s*:\s*[\"\'](.*?)[\"\']',
-                                r'\"(https?://[^\"]*\.mp4[^\"]*?)\"',
+                                r"\"(https?://[^\"]*gvideo\.eporner\.com[^\"]*\.mp4[^\"]*?)\"",
+                                r"video_url[\"\']\s*:\s*[\"\'](.*?)[\"\']",
+                                r"\"(https?://[^\"]*\.mp4[^\"]*?)\"",
                             ]
-                            
+
                             video_url = None
                             for pattern in video_patterns:
-                                matches = re.findall(pattern, response.text, re.IGNORECASE)
+                                matches = re.findall(
+                                    pattern, response.text, re.IGNORECASE
+                                )
                                 if matches:
                                     video_url = matches[0]
                                     break
-                            
+
                             if video_url:
-                                print(f" [+] Found direct video URL, attempting download...")
+                                print(
+                                    f" [+] Found direct video URL, attempting download..."
+                                )
                                 progress.percent = 75.0
-                                
+
                                 # Use yt-dlp to download the direct video URL
                                 direct_opts = {
-                                    'outtmpl': os.path.join(download_path, progress.title + '.%(ext)s'),
-                                    'progress_hooks': [lambda d: self.progress_hook(d, progress)],
-                                    'http_headers': {
-                                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-                                        'Referer': 'https://www.eporner.com/',
-                                    }
+                                    "outtmpl": os.path.join(
+                                        download_path, progress.title + ".%(ext)s"
+                                    ),
+                                    "progress_hooks": [
+                                        lambda d: self.progress_hook(d, progress)
+                                    ],
+                                    "http_headers": {
+                                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                                        "Referer": "https://www.eporner.com/",
+                                    },
                                 }
-                                
+
                                 with yt_dlp.YoutubeDL(direct_opts) as direct_ydl:
                                     direct_ydl.download([video_url])
-                                
-                                progress.status = 'completed'
+
+                                progress.status = "completed"
                                 progress.percent = 100.0
                                 print(f" [+] Manual Eporner extraction successful!")
-                                
+
                                 # Auto-cleanup matching partial files
                                 try:
-                                    removed_files = auto_cleanup_matching_partial_files(progress.title)
+                                    removed_files = auto_cleanup_matching_partial_files(
+                                        progress.title
+                                    )
                                     if removed_files:
-                                        print(f" [+] Auto-cleaned {len(removed_files)} matching partial files: {', '.join(removed_files)}")
+                                        print(
+                                            f" [+] Auto-cleaned {len(removed_files)} matching partial files: {', '.join(removed_files)}"
+                                        )
                                 except Exception as e:
                                     print(f" [!] Error during auto-cleanup: {e}")
-                                
+
                                 return  # Success!
                             else:
                                 print(f" [!] Could not find video URL in page content")
-                                
+
                         except Exception as manual_e:
                             print(f" [!] Manual extraction failed: {manual_e}")
-                    
+
                     progress.percent = 0.0  # Reset on fallback failure
                     if not progress.cancelled:
-                        progress.status = 'error'
+                        progress.status = "error"
                         progress.error = error_msg
             else:
                 if not progress.cancelled:
-                    progress.status = 'error'
+                    progress.status = "error"
                     progress.error = error_msg
         except Exception as e:
             error_msg = str(e)
@@ -2306,97 +2863,111 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             # Reset progress on error
             progress.percent = 0.0
             if not progress.cancelled:
-                progress.status = 'error'
+                progress.status = "error"
                 progress.error = error_msg
         finally:
             print(f" [+] Download thread finished for: {progress.title}")
-            
+
             # If download failed, add to persistent store
-            if progress.status == 'error' and not progress.cancelled:
-                print(f" [!] Adding failed download to persistent store: {progress.title}")
-                progress.partial_files = get_partial_files(progress.download_id, progress.title)
-                add_failed_download(progress.download_id, {
-                    'url': progress.url,
-                    'title': progress.title,
-                    'error': progress.error,
-                    'retry_count': progress.retry_count,
-                    'open_folder': progress.open_folder
-                })
-                
+            if progress.status == "error" and not progress.cancelled:
+                print(
+                    f" [!] Adding failed download to persistent store: {progress.title}"
+                )
+                progress.partial_files = get_partial_files(
+                    progress.download_id, progress.title
+                )
+                add_failed_download(
+                    progress.download_id,
+                    {
+                        "url": progress.url,
+                        "title": progress.title,
+                        "error": progress.error,
+                        "retry_count": progress.retry_count,
+                        "open_folder": progress.open_folder,
+                    },
+                )
+
                 # Mark as failed in URL tracker
-                if hasattr(progress, 'url_track_id'):
+                if hasattr(progress, "url_track_id"):
                     tracker = get_tracker()
                     tracker.mark_failed(progress.url_track_id, progress.error)
-            
+
             # Clean up from active downloads after 5 minutes (unless it's a failed download to retry)
             def cleanup():
                 time.sleep(300)  # 5 minutes
                 with download_lock:
                     if progress.download_id in active_downloads:
                         # Only remove if it's not a failed download (failed downloads stay for retry)
-                        if progress.status != 'error':
+                        if progress.status != "error":
                             print(f" [+] Cleaning up download: {progress.download_id}")
                             del active_downloads[progress.download_id]
                             save_active_downloads()
-            
+
             cleanup_thread = threading.Thread(target=cleanup)
             cleanup_thread.daemon = True
             cleanup_thread.start()
-    
+
     def progress_hook(self, d, progress):
         """Progress hook for yt-dlp."""
         if progress.cancelled:
             raise yt_dlp.DownloadError("Download cancelled by user")
-        
-        if d['status'] == 'downloading':
+
+        if d["status"] == "downloading":
             # Update progress information
-            if 'total_bytes' in d and d['total_bytes']:
-                progress.percent = (d.get('downloaded_bytes', 0) / d['total_bytes']) * 100
-            elif 'total_bytes_estimate' in d and d['total_bytes_estimate']:
-                progress.percent = (d.get('downloaded_bytes', 0) / d['total_bytes_estimate']) * 100
-            
+            if "total_bytes" in d and d["total_bytes"]:
+                progress.percent = (
+                    d.get("downloaded_bytes", 0) / d["total_bytes"]
+                ) * 100
+            elif "total_bytes_estimate" in d and d["total_bytes_estimate"]:
+                progress.percent = (
+                    d.get("downloaded_bytes", 0) / d["total_bytes_estimate"]
+                ) * 100
+
             # Format speed and ETA
-            speed = d.get('_speed_str', '').strip()
-            eta = d.get('_eta_str', '').strip()
-            
+            speed = d.get("_speed_str", "").strip()
+            eta = d.get("_eta_str", "").strip()
+
             progress.speed = speed
             progress.eta = eta
-            
+
             # Save active downloads periodically (every 10% progress)
             if int(progress.percent) % 10 == 0:
                 with download_lock:
                     save_active_downloads()
-            
-        elif d['status'] == 'finished':
-            progress.status = 'processing'
+
+        elif d["status"] == "finished":
+            progress.status = "processing"
             progress.percent = 100.0
             with download_lock:
                 save_active_downloads()
-    
+
     def send_json_response(self, data, status=200):
         """Send JSON response with CORS headers."""
         self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
-        
+
         response_data = json.dumps(data, indent=2)
-        self.wfile.write(response_data.encode('utf-8'))
-    
+        self.wfile.write(response_data.encode("utf-8"))
+
     def send_html_response(self, html):
         """Send HTML response."""
         self.send_response(200)
-        self.send_header('Content-Type', 'text/html')
+        self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.wfile.write(html.encode('utf-8'))
-    
+        self.wfile.write(html.encode("utf-8"))
+
     def get_web_interface(self):
         """Get modern VidSnatch homepage interface."""
         # Count only truly active downloads (preparing, downloading, processing)
-        active_count = sum(1 for progress in active_downloads.values() 
-                          if progress.status in ['preparing', 'downloading', 'processing'])
+        active_count = sum(
+            1
+            for progress in active_downloads.values()
+            if progress.status in ["preparing", "downloading", "processing"]
+        )
         return f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -2523,7 +3094,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .container {{
-                    max-width: 1200px;
+                    max-width: 90%;
                     margin: 0 auto;
                     padding: 20px;
                 }}
@@ -2868,14 +3439,65 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     font-size: 0.8rem;
                     color: #666;
                 }}
-                
-                .file-explorer {{
-                    max-height: 400px;
-                    overflow-y: auto;
+
+                .folder-tabs-container {{
+                    display: none; /* Hidden by default, shown when folders exist */
                     margin-top: 15px;
-                    border: 1px solid var(--card-border);
-                    border-radius: 8px;
+                    margin-bottom: 0;
+                    padding: 0;
                     background: var(--card-bg);
+                    border-radius: 8px 8px 0 0;
+                }}
+
+                .folder-tabs {{
+                    display: flex;
+                    gap: 5px;
+                    border-bottom: 2px solid var(--table-border);
+                    padding: 0 10px;
+                    overflow-x: auto;
+                    flex-wrap: wrap;
+                    background: var(--card-bg);
+                }}
+
+                .folder-tab {{
+                    padding: 10px 20px;
+                    border: none;
+                    cursor: pointer;
+                    border-radius: 8px 8px 0 0;
+                    font-weight: 400;
+                    transition: all 0.2s ease;
+                    white-space: nowrap;
+                    background: var(--input-bg);
+                    color: var(--text-color);
+                }}
+
+                .folder-tab.active {{
+                    background: var(--btn-bg);
+                    color: white;
+                    font-weight: 600;
+                }}
+
+                .folder-tab:hover {{
+                    opacity: 0.8;
+                }}
+
+                .file-explorer {{
+                    max-height: 700px;
+                    overflow-y: auto;
+                    margin-top: 0;
+                    border: 1px solid var(--card-border);
+                    border-radius: 0 0 8px 8px;
+                    background: var(--card-bg);
+                }}
+
+                .file-explorer.has-tabs {{
+                    border-top: none;
+                    border-radius: 0 0 8px 8px;
+                }}
+
+                .file-explorer.no-tabs {{
+                    margin-top: 15px;
+                    border-radius: 8px;
                 }}
                 
                 .files-table {{
@@ -2970,19 +3592,18 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 }}
                 
                 .file-name-text {{
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
+                    text-wrap: auto;
                 }}
                 
                 .name-input {{
                     width: 100% !important;
-                    border: 1px solid var(--input-border) !important;
+                    border: 2px solid var(--input-border) !important;
                     background: var(--input-bg) !important;
-                    color: var(--text-color) !important;
+                    color: #247bff !important;
                     padding: 2px 4px !important;
-                    border-radius: 2px !important;
-                    font-size: 12px !important;
+                    border-radius: 3px !important;
+                    font-size: 14px !important;
+                    font-weight: bold;
                     transition: border-color 0.2s ease !important;
                 }}
                 
@@ -3524,9 +4145,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     flex-wrap: nowrap;
                     align-items: center;
                     gap: 4px;
-                    height: 32px;
-                    min-height: 32px;
-                    max-height: 32px;
+                    max-height: 70px;
                     padding: 4px 8px;
                     border: 1px solid var(--input-border);
                     border-radius: 6px;
@@ -3535,8 +4154,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     transition: border-color 0.2s ease;
                     overflow-x: auto;
                     overflow-y: hidden;
-                    scrollbar-width: thin;
-                    scrollbar-color: var(--border-color) transparent;
+                    scrollbar-width: 0;
+                    justify-content: space-between;
                 }}
                 
                 .tags-input-container::-webkit-scrollbar {{
@@ -3563,9 +4182,10 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 .tags-chips {{
                     display: flex;
-                    flex-wrap: nowrap;
+                    flex-wrap: wrap;
                     gap: 4px;
                     flex: 0 0 auto;
+                    max-width: 70%;
                 }}
                 
                 .tag-chip {{
@@ -3621,9 +4241,9 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     color: var(--text-color);
                     font-size: 0.8rem;
                     padding: 4px 0;
-                    min-width: 80px;
+                    width: 65px;
                     height: 22px;
-                    flex: 1 1 auto;
+                    flex: 0 0 auto;
                     overflow: hidden;
                 }}
                 
@@ -3730,11 +4350,12 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 <div class="card" style="margin-bottom: 20px;">
                     <h3>🗂️ Downloaded Files</h3>
                     <div class="search-bar-container">
-                        <input type="text" id="fileSearchBar" class="search-input" 
-                               placeholder="Search files by name, tags, or URL..." 
+                        <input type="text" id="fileSearchBar" class="search-input"
+                               placeholder="Search files by name, tags, or URL..."
                                oninput="filterFiles(this.value)">
                         <div class="search-icon">🔍</div>
                     </div>
+                    <div id="folderTabsContainer" class="folder-tabs-container"></div>
                     <div class="file-explorer" id="fileExplorer">
                         <div class="loading-container">
                             <div class="loading-spinner"></div>
@@ -3807,26 +4428,29 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             
             <script>
                 let currentFolder = '';
-                
-                // Person names storage
-                const personNames = JSON.parse(localStorage.getItem('personNames') || '{{}}');
-                
-                // Deleted URLs storage for suggested downloads
+
+                // Server-side metadata storage
+                let serverMetadata = {{
+                    person_names: {{}},
+                    file_tags: {{}}
+                }};
+
+                // Deleted URLs storage for suggested downloads (keep in localStorage)
                 const deletedUrls = JSON.parse(localStorage.getItem('deletedSuggestedUrls') || '{{}}');
-                
+
                 function isUrlDeleted(url) {{
                     return deletedUrls[url] === true;
                 }}
-                
+
                 function markUrlAsDeleted(url) {{
                     deletedUrls[url] = true;
                     localStorage.setItem('deletedSuggestedUrls', JSON.stringify(deletedUrls));
                 }}
-                
+
                 function toggleSuggestedDownloads() {{
                     const section = document.getElementById('suggestedDownloadsSection');
                     const icon = document.getElementById('suggestedToggleIcon');
-                    
+
                     if (section.style.display === 'none') {{
                         section.style.display = 'block';
                         icon.textContent = '▼';
@@ -3835,22 +4459,45 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         icon.textContent = '▶';
                     }}
                 }}
-                
+
                 function openUrlInNewTab(url) {{
                     window.open(url, '_blank');
                 }}
-                
-                function getPersonName(filename) {{
-                    return personNames[filename] || '';
-                }}
-                
-                function savePersonName(filename, name) {{
-                    if (name.trim()) {{
-                        personNames[filename] = name.trim();
-                    }} else {{
-                        delete personNames[filename];
+
+                async function loadServerMetadata() {{
+                    try {{
+                        const response = await fetch('/api/metadata');
+                        const result = await response.json();
+                        if (result.success) {{
+                            serverMetadata = result.data;
+                        }}
+                    }} catch (error) {{
+                        console.error('Error loading metadata:', error);
                     }}
-                    localStorage.setItem('personNames', JSON.stringify(personNames));
+                }}
+
+                function getPersonName(filename) {{
+                    return serverMetadata.person_names[filename] || '';
+                }}
+
+                async function savePersonName(filename, name) {{
+                    try {{
+                        const response = await fetch('/api/metadata/person-name', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ filename, name }})
+                        }});
+                        const result = await response.json();
+                        if (result.success) {{
+                            if (name.trim()) {{
+                                serverMetadata.person_names[filename] = name.trim();
+                            }} else {{
+                                delete serverMetadata.person_names[filename];
+                            }}
+                        }}
+                    }} catch (error) {{
+                        console.error('Error saving person name:', error);
+                    }}
                 }}
                 
                 function escapeFilename(filename) {{
@@ -4108,15 +4755,44 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     }});
                 }}
 
+                // Migrate localStorage data to server
+                async function migrateLocalStorageData() {{
+                    const oldPersonNames = JSON.parse(localStorage.getItem('personNames') || '{{}}');
+                    const oldFileTags = JSON.parse(localStorage.getItem('fileTags') || '{{}}');
+
+                    if (Object.keys(oldPersonNames).length > 0 || Object.keys(oldFileTags).length > 0) {{
+                        console.log('Migrating localStorage data to server...');
+                        try {{
+                            const response = await fetch('/api/metadata/import', {{
+                                method: 'POST',
+                                headers: {{ 'Content-Type': 'application/json' }},
+                                body: JSON.stringify({{
+                                    personNames: oldPersonNames,
+                                    fileTags: oldFileTags
+                                }})
+                            }});
+                            const result = await response.json();
+                            if (result.success) {{
+                                console.log(result.message);
+                                // Clear localStorage after successful migration
+                                localStorage.removeItem('personNames');
+                                localStorage.removeItem('fileTags');
+                            }}
+                        }} catch (error) {{
+                            console.error('Error migrating data:', error);
+                        }}
+                    }}
+                }}
+
                 // Initialize the page
-                document.addEventListener('DOMContentLoaded', function() {{
+                document.addEventListener('DOMContentLoaded', async function() {{
                     initializeTheme();
+                    await loadServerMetadata();
+                    await migrateLocalStorageData();
                     loadCurrentFolder();
                     loadDownloadedFiles();
                     updateDownloads();
                     setInterval(updateDownloads, 2000); // Update every 2 seconds
-                    
-                    
                 }});
                 
                 async function loadCurrentFolder() {{
@@ -4198,8 +4874,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         if (aVal > bVal) return currentSort.order === 'asc' ? 1 : -1;
                         return 0;
                     }});
-                    
-                    renderFilesTable();
+
+                    // Render the appropriate view
+                    if (currentFolderTab) {{
+                        renderFolderFilesTable();
+                    }} else {{
+                        renderFilesTable();
+                    }}
                 }}
                 
                 function renderFilesTable() {{
@@ -4226,11 +4907,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                         File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 8%; cursor: pointer;" onclick="sortFiles('length')" title="Sort by video length">
-                                        Length ${{currentSort.column === 'length' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
-                                        <div class="column-resizer"></div>
-                                    </th>
-                                    <th class="resizable-column" style="width: 30%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
+                                    <th class="resizable-column" style="width: 38%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
                                         Tags ${{currentSort.column === 'tags' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
@@ -4285,7 +4962,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                                        onchange="savePersonName('${{escapeFilename(file.name)}}', this.value)">
                                             </td>
                                             <td>${{file.size}}</td>
-                                            <td>${{length}}</td>
                                             <td>
                                                 <div class="tags-input-container" data-filename="${{file.name}}" onclick="event.stopPropagation()">
                                                     <div class="tags-chips"></div>
@@ -4379,61 +5055,261 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     }});
                 }}
                 
+                let currentFolderTab = null;
+                let allFoldersData = {{}};
+
                 async function loadDownloadedFiles() {{
                     try {{
                         const response = await fetch('/browse-downloads');
                         const result = await response.json();
                         const fileExplorer = document.getElementById('fileExplorer');
-                        
-                        if (result.status === 'success' && result.files.length > 0) {{
-                            // Parse files data with size conversion and timestamp extraction
-                            filesData = result.files.map(file => {{
-                                // Use timestamp directly since it's already a number
-                                const timestamp = typeof file.modified === 'number' ? file.modified : parseFloat(file.modified) || Date.now() / 1000;
-                                
-                                // Parse file size for sorting
-                                const sizeMatch = file.size.match(/(\\d+\\.?\\d*)\\s*(\\w+)/);
-                                let sizeBytes = 0;
-                                if (sizeMatch) {{
-                                    const value = parseFloat(sizeMatch[1]);
-                                    const unit = sizeMatch[2];
-                                    const multipliers = {{ 'B': 1, 'KB': 1024, 'MB': 1024*1024, 'GB': 1024*1024*1024 }};
-                                    sizeBytes = value * (multipliers[unit] || 1);
+
+                        if (result.status === 'success') {{
+                            if (result.has_subdirs) {{
+                                // Handle tabbed folder view
+                                allFoldersData = result.folders || {{}};
+                                const folderNames = Object.keys(allFoldersData).sort();
+
+                                if (folderNames.length > 0) {{
+                                    // Set initial folder if not set
+                                    if (!currentFolderTab || !allFoldersData[currentFolderTab]) {{
+                                        currentFolderTab = folderNames[0];
+                                    }}
+
+                                    renderFolderTabs(folderNames);
+                                    loadFolderFiles(currentFolderTab);
+                                }} else {{
+                                    // Hide tabs container and update file explorer styling
+                                    const tabsContainer = document.getElementById('folderTabsContainer');
+                                    tabsContainer.style.display = 'none';
+                                    fileExplorer.classList.remove('has-tabs');
+                                    fileExplorer.classList.add('no-tabs');
+
+                                    fileExplorer.innerHTML = '<div class="empty-state">No video files found in subdirectories</div>';
                                 }}
-                                
-                                return {{
-                                    name: file.name,
-                                    size: file.size,
-                                    sizeBytes: sizeBytes,
-                                    timestamp: timestamp,
-                                    original: file
-                                }};
-                            }});
-                            
-                            // Initialize filtered data with all files
-                            filteredFilesData = [...filesData];
-                            
-                            // Apply current sort (default is date descending - newest first)
-                            // Don't use sortFiles() as it toggles - apply sort directly
-                            filesData.sort((a, b) => {{
-                                const aVal = a.timestamp;
-                                const bVal = b.timestamp;
-                                return currentSort.order === 'asc' ? aVal - bVal : bVal - aVal;
-                            }});
-                            renderFilesTable();
+                            }} else if (result.files && result.files.length > 0) {{
+                                // Handle flat file view (no subdirectories)
+                                allFoldersData = {{}};
+                                currentFolderTab = null;
+
+                                // Hide tabs container and update file explorer styling
+                                const tabsContainer = document.getElementById('folderTabsContainer');
+                                tabsContainer.style.display = 'none';
+                                fileExplorer.classList.remove('has-tabs');
+                                fileExplorer.classList.add('no-tabs');
+
+                                // Parse files data with size conversion and timestamp extraction
+                                filesData = result.files.map(file => {{
+                                    const timestamp = typeof file.modified === 'number' ? file.modified : parseFloat(file.modified) || Date.now() / 1000;
+                                    const sizeMatch = file.size.match(/(\\d+\\.?\\d*)\\s*(\\w+)/);
+                                    let sizeBytes = 0;
+                                    if (sizeMatch) {{
+                                        const value = parseFloat(sizeMatch[1]);
+                                        const unit = sizeMatch[2];
+                                        const multipliers = {{ 'B': 1, 'KB': 1024, 'MB': 1024*1024, 'GB': 1024*1024*1024 }};
+                                        sizeBytes = value * (multipliers[unit] || 1);
+                                    }}
+                                    return {{
+                                        name: file.name,
+                                        size: file.size,
+                                        sizeBytes: sizeBytes,
+                                        timestamp: timestamp,
+                                        original: file
+                                    }};
+                                }});
+
+                                filteredFilesData = [...filesData];
+                                filesData.sort((a, b) => {{
+                                    const aVal = a.timestamp;
+                                    const bVal = b.timestamp;
+                                    return currentSort.order === 'asc' ? aVal - bVal : bVal - aVal;
+                                }});
+                                renderFilesTable();
+                            }} else {{
+                                filesData = [];
+                                filteredFilesData = [];
+
+                                // Hide tabs container and update file explorer styling
+                                const tabsContainer = document.getElementById('folderTabsContainer');
+                                tabsContainer.style.display = 'none';
+                                fileExplorer.classList.remove('has-tabs');
+                                fileExplorer.classList.add('no-tabs');
+
+                                fileExplorer.innerHTML = '<div class="empty-state">No video files found in downloads folder</div>';
+                            }}
                         }} else {{
-                            filesData = [];
-                            filteredFilesData = [];
-                            renderFilesTable();
+                            // Hide tabs container and update file explorer styling
+                            const tabsContainer = document.getElementById('folderTabsContainer');
+                            tabsContainer.style.display = 'none';
+                            fileExplorer.classList.remove('has-tabs');
+                            fileExplorer.classList.add('no-tabs');
+
+                            fileExplorer.innerHTML = '<div class="empty-state">Error: ' + result.message + '</div>';
                         }}
                     }} catch (error) {{
                         console.error('Error loading files:', error);
                         document.getElementById('fileExplorer').innerHTML = '<div class="empty-state">Error loading files</div>';
-                        // Check if it's a network error
                         if (error instanceof TypeError && error.message === 'Failed to fetch') {{
                             console.error('Network error: Unable to connect to server for file browsing');
                         }}
                     }}
+                }}
+
+                function renderFolderTabs(folderNames) {{
+                    const tabsContainer = document.getElementById('folderTabsContainer');
+                    const fileExplorer = document.getElementById('fileExplorer');
+
+                    // Show tabs container and update file explorer styling
+                    tabsContainer.style.display = 'block';
+                    fileExplorer.classList.add('has-tabs');
+                    fileExplorer.classList.remove('no-tabs');
+
+                    const tabsHTML = `
+                        <div class="folder-tabs">
+                            ${{folderNames.map(folder => `
+                                <button
+                                    class="folder-tab ${{folder === currentFolderTab ? 'active' : ''}}"
+                                    data-folder="${{folder}}"
+                                    onclick="switchFolder('${{folder.replace(/'/g, "\\\\'")}}')"
+                                >
+                                    ${{folder}} (${{allFoldersData[folder].length}})
+                                </button>
+                            `).join('')}}
+                        </div>
+                    `;
+
+                    tabsContainer.innerHTML = tabsHTML;
+                }}
+
+                function switchFolder(folderName) {{
+                    currentFolderTab = folderName;
+                    const folderNames = Object.keys(allFoldersData).sort();
+
+                    // Get current search term before switching
+                    const searchBar = document.getElementById('fileSearchBar');
+                    const currentSearchTerm = searchBar ? searchBar.value : '';
+
+                    renderFolderTabs(folderNames);
+                    loadFolderFiles(folderName);
+
+                    // Re-apply search filter if one exists
+                    if (currentSearchTerm) {{
+                        filterFiles(currentSearchTerm);
+                    }}
+                }}
+
+                function loadFolderFiles(folderName) {{
+                    const files = allFoldersData[folderName] || [];
+
+                    // Parse files data
+                    filesData = files.map(file => {{
+                        const timestamp = typeof file.modified === 'number' ? file.modified : parseFloat(file.modified) || Date.now() / 1000;
+                        const sizeMatch = file.size.match(/(\\d+\\.?\\d*)\\s*(\\w+)/);
+                        let sizeBytes = 0;
+                        if (sizeMatch) {{
+                            const value = parseFloat(sizeMatch[1]);
+                            const unit = sizeMatch[2];
+                            const multipliers = {{ 'B': 1, 'KB': 1024, 'MB': 1024*1024, 'GB': 1024*1024*1024 }};
+                            sizeBytes = value * (multipliers[unit] || 1);
+                        }}
+                        return {{
+                            name: file.name,
+                            size: file.size,
+                            sizeBytes: sizeBytes,
+                            timestamp: timestamp,
+                            original: file
+                        }};
+                    }});
+
+                    filteredFilesData = [...filesData];
+                    filesData.sort((a, b) => {{
+                        const aVal = a.timestamp;
+                        const bVal = b.timestamp;
+                        return currentSort.order === 'asc' ? aVal - bVal : bVal - aVal;
+                    }});
+
+                    renderFolderFilesTable();
+                }}
+
+                function renderFolderFilesTable() {{
+                    const fileExplorer = document.getElementById('fileExplorer');
+
+                    if (!filesData.length) {{
+                        fileExplorer.innerHTML = '<div class="empty-state">No video files in this folder</div>';
+                        return;
+                    }}
+
+                    const tableHTML = `
+                        <table class="files-table resizable-table">
+                            <thead>
+                                <tr>
+                                    <th class="resizable-column" style="width: 25%; cursor: pointer;" onclick="sortFiles('title')" title="Sort by title">
+                                        Title ${{currentSort.column === 'title' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 12%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
+                                        Name ${{currentSort.column === 'name' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 10%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
+                                        File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 38%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
+                                        Tags ${{currentSort.column === 'tags' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
+                                        Date Added ${{currentSort.column === 'date' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${{filesData.map(file => {{
+                                    const isVideoFile = /\\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v)$/i.test(file.name);
+                                    const icon = '🎥';
+                                    const clickHandler = `onclick="playVideo('${{escapeFilename(file.name)}}')"`;
+                                    const dateAdded = formatHumanDate(file.timestamp);
+                                    const personName = getPersonName(file.name) || '';
+
+                                    return `
+                                        <tr data-filename="${{file.name}}" ${{clickHandler}} style="cursor: pointer">
+                                            <td>
+                                                <div class="file-name-cell">
+                                                    <span>${{icon}}</span>
+                                                    <span class="file-name-text" title="${{file.name}}">${{file.name.replace(/\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v)$/i, '')}}</span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <input type="text" class="name-input" value="${{personName}}"
+                                                       placeholder="Enter name..."
+                                                       onclick="event.stopPropagation()"
+                                                       onchange="savePersonName('${{escapeFilename(file.name)}}', this.value)">
+                                            </td>
+                                            <td>${{file.size}}</td>
+                                            <td>
+                                                <div class="tags-input-container" data-filename="${{file.name}}" onclick="event.stopPropagation()">
+                                                    <div class="tags-chips"></div>
+                                                    <input type="text" class="tags-input-field"
+                                                           placeholder="Add tags..."
+                                                           onkeydown="handleTagInputKeydown(event, '${{escapeFilename(file.name)}}')"
+                                                           onblur="handleTagInputBlur(event, '${{escapeFilename(file.name)}}')"
+                                                           onfocus="handleTagInputFocus(event, '${{escapeFilename(file.name)}}')"
+                                                           onclick="event.stopPropagation()">
+                                                </div>
+                                            </td>
+                                            <td>${{dateAdded}}</td>
+                                        </tr>
+                                    `;
+                                }}).join('')}}
+                            </tbody>
+                        </table>
+                    `;
+
+                    fileExplorer.innerHTML = tableHTML;
+                    initializeColumnResizing();
+                    initializeAllTagsDisplays();
+                    videoFilesList = filesData.map(file => file.name);
                 }}
                 
                 async function updateDownloads() {{
@@ -4547,7 +5423,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         console.error('Failed to update downloads:', error);
                         // Check if it's a network error
                         if (error instanceof TypeError && error.message === 'Failed to fetch') {{
-                            console.error('Network error: Unable to connect to server at localhost:8080');
+                            console.error('Network error: Unable to connect to server at 0.0.0.0:8080');
                             console.error('Make sure the VidSnatch server is running');
                         }}
                     }}
@@ -5586,19 +6462,28 @@ The web interface is limited by browser security - only extensions can access hi
                 }}
                 
                 // Tags system storage and management
-                const fileTags = JSON.parse(localStorage.getItem('fileTags') || '{{}}');
-                
                 function getFileTags(filename) {{
-                    return fileTags[filename] || [];
+                    return serverMetadata.file_tags[filename] || [];
                 }}
-                
-                function setFileTags(filename, tags) {{
-                    if (tags && tags.length > 0) {{
-                        fileTags[filename] = tags.slice(0, 5); // Limit to 5 tags
-                    }} else {{
-                        delete fileTags[filename];
+
+                async function setFileTags(filename, tags) {{
+                    try {{
+                        const response = await fetch('/api/metadata/tags', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ filename, tags: tags.slice(0, 15) }})
+                        }});
+                        const result = await response.json();
+                        if (result.success) {{
+                            if (tags && tags.length > 0) {{
+                                serverMetadata.file_tags[filename] = tags.slice(0, 15);
+                            }} else {{
+                                delete serverMetadata.file_tags[filename];
+                            }}
+                        }}
+                    }} catch (error) {{
+                        console.error('Error saving tags:', error);
                     }}
-                    localStorage.setItem('fileTags', JSON.stringify(fileTags));
                 }}
                 
                 function editTags(filename) {{
@@ -5698,9 +6583,9 @@ The web interface is limited by browser security - only extensions can access hi
                 function handleTagInputKeydown(event, filename) {{
                     const input = event.target;
                     const value = input.value.trim();
-                    
-                    // Handle Enter, Space, Comma, or Tab to create tags
-                    if ((event.key === 'Enter' || event.key === ' ' || event.key === ',' || event.key === 'Tab') && value) {{
+
+                    // Handle Enter to create tags (allows spaces in tags)
+                    if (event.key === 'Enter' && value) {{
                         event.preventDefault();
                         addTag(filename, value);
                         input.value = '';
@@ -5729,25 +6614,35 @@ The web interface is limited by browser security - only extensions can access hi
                     event.target.style.outline = 'none';
                 }}
                 
-                function addTag(filename, tagText) {{
-                    if (!tagText) return;
-                    
-                    const currentTags = getFileTags(filename);
-                    const newTag = tagText.trim();
-                    
-                    // Avoid duplicates and limit to 5 tags
-                    if (!currentTags.includes(newTag) && currentTags.length < 5) {{
-                        const updatedTags = [...currentTags, newTag];
-                        setFileTags(filename, updatedTags);
-                        updateTagsDisplay(filename);
+                async function addTag(filename, tagText) {{
+                    try {{
+                        if (!tagText) return;
+
+                        const currentTags = getFileTags(filename);
+                        const newTag = tagText.trim();
+
+                        // Avoid duplicates and limit to 15 tags
+                        if (!currentTags.includes(newTag) && currentTags.length < 15) {{
+                            const updatedTags = [...currentTags, newTag];
+                            await setFileTags(filename, updatedTags);
+                            updateTagsDisplay(filename);
+                        }}
+                    }} catch (error) {{
+                        console.error('Error adding tag:', error);
+                        alert('Failed to add tag. Please try again.');
                     }}
                 }}
-                
-                function removeTag(filename, tagToRemove) {{
-                    const currentTags = getFileTags(filename);
-                    const updatedTags = currentTags.filter(tag => tag !== tagToRemove);
-                    setFileTags(filename, updatedTags);
-                    updateTagsDisplay(filename);
+
+                async function removeTag(filename, tagToRemove) {{
+                    try {{
+                        const currentTags = getFileTags(filename);
+                        const updatedTags = currentTags.filter(tag => tag !== tagToRemove);
+                        await setFileTags(filename, updatedTags);
+                        updateTagsDisplay(filename);
+                    }} catch (error) {{
+                        console.error('Error removing tag:', error);
+                        alert('Failed to remove tag. Please try again.');
+                    }}
                 }}
                 
                 function addTagToSearch(tag) {{
@@ -5791,47 +6686,51 @@ The web interface is limited by browser security - only extensions can access hi
         </body>
         </html>
         """
-    
+
     def log_message(self, format, *args):
         """Override to customize log messages."""
         print(f" [API] {format % args}")
+
 
 def clean_stuck_downloads():
     """Clean up downloads stuck in preparing state for too long."""
     current_time = time.time()
     stuck_timeout = 30  # Consider stuck after 30 seconds in preparing state
-    
+
     with download_lock:
         stuck_downloads = []
         for download_id, progress in list(active_downloads.items()):
             # Check if download is stuck in preparing state
-            if progress.status == 'preparing':
+            if progress.status == "preparing":
                 runtime = current_time - progress.start_time
                 if runtime > stuck_timeout:
                     stuck_downloads.append((download_id, progress))
-        
+
         # Clean up stuck downloads
         for download_id, progress in stuck_downloads:
             runtime = current_time - progress.start_time
-            print(f" [!] Cleaning stuck download: {progress.title} (stuck in preparing for {runtime:.0f}s)")
-            progress.status = 'failed'
-            progress.error = 'Download stuck in preparing state'
-            
+            print(
+                f" [!] Cleaning stuck download: {progress.title} (stuck in preparing for {runtime:.0f}s)"
+            )
+            progress.status = "failed"
+            progress.error = "Download stuck in preparing state"
+
             # Move to failed downloads
             failed_downloads[download_id] = {
-                'title': progress.title,
-                'url': progress.url,
-                'error': 'Stuck in preparing state - cleaned up',
-                'retry_count': getattr(progress, 'retry_count', 0),
-                'failed_at': current_time
+                "title": progress.title,
+                "url": progress.url,
+                "error": "Stuck in preparing state - cleaned up",
+                "retry_count": getattr(progress, "retry_count", 0),
+                "failed_at": current_time,
             }
-            
+
             del active_downloads[download_id]
-        
+
         if stuck_downloads:
             save_active_downloads()
             save_failed_downloads()
             print(f" [+] Cleaned {len(stuck_downloads)} stuck downloads")
+
 
 def monitor_downloads():
     """Background thread to monitor and clean stuck downloads."""
@@ -5842,76 +6741,85 @@ def monitor_downloads():
         except Exception as e:
             print(f" [!] Error in download monitor: {e}")
 
+
 def auto_retry_incomplete_downloads(handler_class):
     """Automatically retry incomplete downloads from URL tracker."""
     tracker = get_tracker()
     incomplete = tracker.get_incomplete_urls()
-    
+
     if incomplete:
         print(f" [+] Found {len(incomplete)} incomplete downloads to retry")
-        
+
         # Instead of broken auto-retry, just mark them as failed for manual retry
         for url_track_id, url_data in incomplete:
             try:
                 # Create a failed download entry
                 download_id = str(uuid.uuid4())
                 failed_downloads[download_id] = {
-                    'title': url_data['title'],
-                    'url': url_data['url'],
-                    'error': 'Download interrupted by server restart',
-                    'retry_count': url_data.get('attempts', 0),
-                    'failed_at': time.time()
+                    "title": url_data["title"],
+                    "url": url_data["url"],
+                    "error": "Download interrupted by server restart",
+                    "retry_count": url_data.get("attempts", 0),
+                    "failed_at": time.time(),
                 }
                 print(f" [!] Marked as failed: {url_data['title']}")
-                tracker.mark_failed(url_track_id, "Server restart - marked for manual retry")
-                
+                tracker.mark_failed(
+                    url_track_id, "Server restart - marked for manual retry"
+                )
+
             except Exception as e:
-                print(f" [!] Error processing incomplete download {url_data['title']}: {e}")
+                print(
+                    f" [!] Error processing incomplete download {url_data['title']}: {e}"
+                )
+
 
 def start_server(port=8080):
     """Start the enhanced Quikvid-DL web server."""
-    server_address = ('localhost', port)
+    server_address = ("0.0.0.0", port)
     httpd = HTTPServer(server_address, QuikvidHandler)
-    
+
     # Initialize URL tracker
     init_tracker(os.path.expanduser("~/Applications/VidSnatch/.logs/url_tracker.json"))
-    
+
     # Load interrupted downloads from previous session
     load_active_downloads()
-    
+
     # Load failed downloads from storage
     load_failed_downloads()
-    
-    server_logger.info(f"Starting Enhanced VidSnatch Server on http://localhost:{port}")
+
+    server_logger.info(f"Starting Enhanced VidSnatch Server on http://0.0.0.0:{port}")
     server_logger.info("Logging enabled - check .logs/server.log for detailed logs")
-    print(f" [+] Starting Enhanced VidSnatch Server on http://localhost:{port}")
-    print(f" [+] Features: Progress tracking, cancellation, folder control, retry/delete")
+    print(f" [+] Starting Enhanced VidSnatch Server on http://0.0.0.0:{port}")
+    print(
+        f" [+] Features: Progress tracking, cancellation, folder control, retry/delete"
+    )
     print(f" [+] Chrome extension ready for enhanced downloads")
     print(f" [+] Logs saved to .logs/server.log (circular buffer: 15MB total)")
     print(f" [+] Press Ctrl+C to stop the server")
-    
+
     # Auto-retry incomplete downloads after a short delay
     def delayed_auto_retry():
         time.sleep(5)  # Wait 5 seconds for server to fully start
         auto_retry_incomplete_downloads(QuikvidHandler)
-    
+
     retry_thread = threading.Thread(target=delayed_auto_retry)
     retry_thread.daemon = True
     retry_thread.start()
-    
+
     # Start monitor thread to clean stuck downloads
     monitor_thread = threading.Thread(target=monitor_downloads)
     monitor_thread.daemon = True
     monitor_thread.start()
-    
+
     # Clean any currently stuck downloads immediately
     clean_stuck_downloads()
-    
+
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print(f"\n [+] Server stopped")
         httpd.server_close()
+
 
 if __name__ == "__main__":
     start_server()

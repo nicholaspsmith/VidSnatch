@@ -90,10 +90,10 @@
     return true; // Keep message channel open for async response
   });
   
-  // Listen for messages from localhost web page (VidSnatch web interface)
+  // Listen for messages from 0.0.0.0 web page (VidSnatch web interface)
   window.addEventListener('message', async (event) => {
-    // Only accept messages from localhost:8080
-    if (event.origin !== 'http://localhost:8080') return;
+    // Only accept messages from 0.0.0.0:8080
+    if (event.origin !== 'http://0.0.0.0:8080') return;
     
     if (event.data.action === 'scanSuggestedDownloads') {
       const requestId = event.data.requestId;

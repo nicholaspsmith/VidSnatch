@@ -27,6 +27,7 @@ REQUIRED_PACKAGES = {
 # Download templates
 DEFAULT_OUTPUT_TEMPLATE = "%(title)s.%(ext)s"
 
+
 # UI constants
 class UIConstants:
     MAIN_WINDOW_WIDTH = 700
@@ -36,57 +37,82 @@ class UIConstants:
     PROGRESS_BAR_LENGTH = 480
     MENU_ICON_SIZE = 22
 
+
 # Network constants
 DEFAULT_SERVER_PORT = 8080
-DEFAULT_SERVER_HOST = "localhost"
+DEFAULT_SERVER_HOST = "0.0.0.0"
 REQUEST_TIMEOUT = 30
 
 # File extension patterns
 VIDEO_EXTENSIONS = (
-    '.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v',
-    '.flv', '.wmv', '.3gp', '.mpg', '.mpeg', '.ts',
-    '.m2ts', '.vob', '.ogv', '.rm', '.rmvb', '.asf',
-    '.divx', '.xvid', '.f4v'
+    ".mp4",
+    ".mkv",
+    ".webm",
+    ".avi",
+    ".mov",
+    ".m4v",
+    ".flv",
+    ".wmv",
+    ".3gp",
+    ".mpg",
+    ".mpeg",
+    ".ts",
+    ".m2ts",
+    ".vob",
+    ".ogv",
+    ".rm",
+    ".rmvb",
+    ".asf",
+    ".divx",
+    ".xvid",
+    ".f4v",
 )
 
-PARTIAL_EXTENSIONS = (
-    '.part', '.ytdl', '.temp', '.download', '.crdownload'
-)
+PARTIAL_EXTENSIONS = (".part", ".ytdl", ".temp", ".download", ".crdownload")
 
 # Site configurations for video downloads
 SITE_CONFIGS = {
-    'youtube.com': {
-        'retries': 5,
-        'player_client': ['android'],
-        'user_agent': ('Mozilla/5.0 (Linux; Android 11; SM-G973F) '
-                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/90.0.4430.210 Mobile Safari/537.36')
+    "youtube.com": {
+        "retries": 5,
+        "player_client": ["android"],
+        "user_agent": (
+            "Mozilla/5.0 (Linux; Android 11; SM-G973F) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/90.0.4430.210 Mobile Safari/537.36"
+        ),
     },
-    'pornhub.com': {
-        'retries': 10,
-        'sleep_interval': 3,
-        'user_agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/91.0.4472.124 Safari/537.36')
+    "pornhub.com": {
+        "retries": 10,
+        "sleep_interval": 3,
+        "user_agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        ),
     },
-    'xhamster.com': {
-        'retries': 8,
-        'sleep_interval': 2,
-        'user_agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/91.0.4472.124 Safari/537.36')
+    "xhamster.com": {
+        "retries": 8,
+        "sleep_interval": 2,
+        "user_agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        ),
     },
-    'eporner.com': {
-        'retries': 6,
-        'output_template': 'Eporner_Video.%(ext)s',
-        'user_agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/91.0.4472.124 Safari/537.36')
-    }
+    "eporner.com": {
+        "retries": 6,
+        "output_template": "Eporner_Video.%(ext)s",
+        "user_agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        ),
+    },
 }
 
 # Debug settings
 DEBUG = False
+
 
 def get_video_download_path():
     """Get the path for video downloads (user preference or default)."""
@@ -100,13 +126,14 @@ def get_video_download_path():
 def get_site_config(url):
     """Get site-specific configuration for a URL."""
     from urllib.parse import urlparse
-    
+
     try:
         domain = urlparse(url).netloc.lower()
         # Remove www. prefix if present
-        if domain.startswith('www.'):
+        if domain.startswith("www."):
             domain = domain[4:]
-        
+
         return SITE_CONFIGS.get(domain, {})
     except Exception:
         return {}
+

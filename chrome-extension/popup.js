@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   
   async function loadCurrentFolderPath() {
     try {
-      const response = await fetch('http://localhost:8080/current-folder');
+      const response = await fetch('http://0.0.0.0:8080/current-folder');
       if (response.ok) {
         const data = await response.json();
         updateFolderPathDisplay(data.path);
@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   
   async function checkServerStatus() {
     try {
-      const response = await fetch('http://localhost:8080/status', {
+      const response = await fetch('http://0.0.0.0:8080/status', {
         method: 'GET',
         timeout: 3000
       });
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       serverStatusText.textContent = 'Stopping server...';
       showStatus('Stopping Quikvid-DL server...', 'info');
       
-      const response = await fetch('http://localhost:8080/stop-server', {
+      const response = await fetch('http://0.0.0.0:8080/stop-server', {
         method: 'POST'
       });
       
@@ -395,7 +395,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Check each stored download with server
     for (const [downloadId, download] of activeDownloads) {
       try {
-        const response = await fetch(`http://localhost:8080/progress/${downloadId}`);
+        const response = await fetch(`http://0.0.0.0:8080/progress/${downloadId}`);
         
         if (response.ok) {
           const progress = await response.json();
@@ -444,7 +444,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     for (const downloadId of activeDownloads.keys()) {
       try {
-        const response = await fetch(`http://localhost:8080/progress/${downloadId}`);
+        const response = await fetch(`http://0.0.0.0:8080/progress/${downloadId}`);
         
         if (response.ok) {
           const progress = await response.json();
@@ -560,7 +560,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     try {
       // Send URL to local Quikvid-DL server
-      const response = await fetch('http://localhost:8080/download', {
+      const response = await fetch('http://0.0.0.0:8080/download', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -614,7 +614,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Global cancel function for onclick handlers
   window.cancelDownload = async function(downloadId) {
     try {
-      const response = await fetch(`http://localhost:8080/cancel/${downloadId}`, {
+      const response = await fetch(`http://0.0.0.0:8080/cancel/${downloadId}`, {
         method: 'POST'
       });
       
@@ -634,7 +634,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Global retry function
   window.retryDownload = async function(downloadId) {
     try {
-      const response = await fetch(`http://localhost:8080/retry/${downloadId}`, {
+      const response = await fetch(`http://0.0.0.0:8080/retry/${downloadId}`, {
         method: 'POST'
       });
       
@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Global delete function
   window.deleteDownload = async function(downloadId) {
     try {
-      const response = await fetch(`http://localhost:8080/delete/${downloadId}`, {
+      const response = await fetch(`http://0.0.0.0:8080/delete/${downloadId}`, {
         method: 'POST'
       });
       
@@ -730,7 +730,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       showStatus('Opening folder selector...', 'info');
       
-      const response = await fetch('http://localhost:8080/select-folder', {
+      const response = await fetch('http://0.0.0.0:8080/select-folder', {
         method: 'POST'
       });
       
@@ -774,7 +774,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       openFolderBtn.disabled = true;
       showStatus('Opening download folder...', 'info');
       
-      const response = await fetch('http://localhost:8080/open-folder', {
+      const response = await fetch('http://0.0.0.0:8080/open-folder', {
         method: 'POST'
       });
       
@@ -810,7 +810,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Web interface button click handler
   webInterfaceBtn.addEventListener('click', async function() {
     try {
-      const webInterfaceUrl = 'http://localhost:8080';
+      const webInterfaceUrl = 'http://0.0.0.0:8080';
       
       // Check if a tab with the web interface is already open
       const tabs = await chrome.tabs.query({ url: `${webInterfaceUrl}/*` });

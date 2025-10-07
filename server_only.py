@@ -64,8 +64,8 @@ def main():
     
     print("\n" + "=" * 60)
     print(" [+] VidSnatch Web Server - Chrome Extension Ready")
-    print(" [+] Server URL: http://localhost:8080")
-    print(" [+] Status Page: http://localhost:8080/")
+    print(" [+] Server URL: http://0.0.0.0:8080")
+    print(" [+] Status Page: http://0.0.0.0:8080/")
     print(" [+] Press Ctrl+C to stop")
     print("=" * 60 + "\n")
     
