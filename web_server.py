@@ -3765,7 +3765,6 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 
                 .video-player-section {{
                     width: 100%;
-                    max-width: 1200px;
                     margin: 0 auto 30px auto;
                     display: none;
                 }}
@@ -3786,7 +3785,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     width: 100%;
                     height: auto;
                     min-height: 300px;
-                    max-height: 70vh;
+                    max-height: 100vh;
                     display: block;
                     background: #000;
                 }}
