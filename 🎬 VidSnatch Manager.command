@@ -2,42 +2,43 @@
 # VidSnatch Manager Launcher
 # This script launches the graphical manager for installing, uninstalling, or reinstalling VidSnatch
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit
 
 # Check if GUI manager exists
 if [[ ! -f "gui_installer.py" ]]; then
-    echo "❌ VidSnatch Manager not found!"
-    echo "Please run ./build-installer.sh first to create the manager package."
-    exit 1
+  echo "❌ VidSnatch Manager not found!"
+  echo "Please run ./build-installer.sh first to create the manager package."
+  exit 1
 fi
 
 # Check if Python 3 is available
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 is not installed!"
-    echo "Please install Python 3 from https://www.python.org/"
-    exit 1
+if ! command -v python3 &>/dev/null; then
+  echo "❌ Python 3 is not installed!"
+  echo "Please install Python 3 from https://www.python.org/"
+  exit 1
 fi
 
 # Check if tkinter is available
 python3 -c "import tkinter" 2>/dev/null
 if [[ $? -ne 0 ]]; then
-    echo "⚠️  tkinter not available. Installing..."
-    echo "This may require administrator privileges."
-    
-    # Try to install tkinter via homebrew
-    if command -v brew &> /dev/null; then
-        echo "Installing python-tk via Homebrew..."
-        brew install python-tk
-    else
-        echo "❌ Homebrew not found. Please install tkinter manually:"
-        echo "   brew install python-tk"
-        echo ""
-        echo "Falling back to command line manager..."
-        python3 gui_installer.py
-        exit $?
-    fi
+  echo "⚠️  tkinter not available. Installing..."
+  echo "This may require administrator privileges."
+
+  # Try to install tkinter via homebrew
+  if command -v brew &>/dev/null; then
+    echo "Installing python-tk via Homebrew..."
+    brew install python-tk
+  else
+    echo "❌ Homebrew not found. Please install tkinter manually:"
+    echo "   brew install python-tk"
+    echo ""
+    echo "Falling back to command line manager..."
+    python3 gui_installer.py
+    exit $?
+  fi
 fi
 
 # Launch the GUI installer/uninstaller
 echo "🎬 Launching VidSnatch Manager..."
 python3 gui_installer.py
+
