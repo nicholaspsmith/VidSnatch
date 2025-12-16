@@ -7,6 +7,61 @@ import time
 from modules.config import REQUIRED_PACKAGES
 
 
+def get_preferred_python():
+    """
+    Find the preferred Python interpreter for creating virtual environments.
+    Prefers Homebrew Python 3.12+ over system Python for better compatibility.
+    Returns the path to the Python executable.
+    """
+    # Preferred Python paths in order of preference
+    python_candidates = [
+        "/opt/homebrew/bin/python3.12",  # Homebrew on Apple Silicon
+        "/opt/homebrew/bin/python3.13",  # Future-proofing
+        "/opt/homebrew/bin/python3",     # Homebrew default
+        "/usr/local/bin/python3.12",     # Homebrew on Intel
+        "/usr/local/bin/python3.13",
+        "/usr/local/bin/python3",
+    ]
+
+    for python_path in python_candidates:
+        if os.path.isfile(python_path) and os.access(python_path, os.X_OK):
+            # Verify it's Python 3.10+
+            try:
+                result = subprocess.run(
+                    [python_path, "-c", "import sys; print(sys.version_info.minor)"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    minor_version = int(result.stdout.strip())
+                    if minor_version >= 10:
+                        return python_path
+            except (subprocess.TimeoutExpired, ValueError):
+                continue
+
+    # Fall back to sys.executable if it's Python 3.10+
+    try:
+        if sys.version_info >= (3, 10):
+            return sys.executable
+    except AttributeError:
+        pass
+
+    # Last resort: check if python3 in PATH is 3.10+
+    try:
+        result = subprocess.run(
+            ["python3", "-c", "import sys; print(sys.version_info.minor)"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            minor_version = int(result.stdout.strip())
+            if minor_version >= 10:
+                return "python3"
+    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+        pass
+
+    # Return None if no suitable Python found
+    return None
+
+
 def check_and_install_dependencies():
     """Check for required packages and install if missing."""
     missing_packages = []
@@ -107,21 +162,33 @@ def kill_processes_by_pattern(patterns):
     return killed_processes
 
 
-def create_virtual_environment(venv_path):
-    """Create a Python virtual environment."""
+def create_virtual_environment(venv_path, python_path=None):
+    """Create a Python virtual environment using the preferred Python."""
     try:
+        # Use provided python_path, or find the preferred Python
+        if python_path is None:
+            python_path = get_preferred_python()
+
+        if python_path is None:
+            print(" [!] No suitable Python 3.10+ found.")
+            print("     Please install Python 3.12 via Homebrew:")
+            print("     brew install python@3.12 python-tk@3.12")
+            return False
+
         print(f" [+] Creating virtual environment at {venv_path}...")
+        print(f"     Using Python: {python_path}")
+
         result = subprocess.run([
-            sys.executable, '-m', 'venv', venv_path
+            python_path, '-m', 'venv', venv_path
         ], capture_output=True, text=True, timeout=120)
-        
+
         if result.returncode == 0:
             print(" [+] Virtual environment created successfully")
             return True
         else:
             print(f" [!] Failed to create virtual environment: {result.stderr}")
             return False
-            
+
     except subprocess.TimeoutExpired:
         print(" [!] Timeout creating virtual environment")
         return False

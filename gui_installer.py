@@ -28,7 +28,8 @@ from modules.installer_utils import (
     kill_processes_by_pattern,
     create_virtual_environment,
     install_requirements_in_venv,
-    create_macos_app_bundle
+    create_macos_app_bundle,
+    get_preferred_python
 )
 
 class VidSnatchInstaller:
@@ -610,8 +611,18 @@ class VidSnatchInstaller:
         # Set up Python virtual environment
         self.log_output("⚙️ Setting up Python environment...")
         venv_path = os.path.join(self.install_dir, "venv")
-        
-        if not self.run_command(f"cd '{self.install_dir}' && python3 -m venv venv", "Creating virtual environment"):
+
+        # Find the preferred Python (Homebrew 3.12+ preferred)
+        preferred_python = get_preferred_python()
+        if preferred_python is None:
+            self.log_output("❌ No suitable Python 3.10+ found.")
+            self.log_output("   Please install Python 3.12 via Homebrew:")
+            self.log_output("   brew install python@3.12 python-tk@3.12")
+            return False
+
+        self.log_output(f"   Using Python: {preferred_python}")
+
+        if not self.run_command(f"cd '{self.install_dir}' && '{preferred_python}' -m venv venv", "Creating virtual environment"):
             return False
             
         # Install dependencies
@@ -919,13 +930,23 @@ except Exception as e:
         # Set up Python virtual environment
         print("⚙️ Setting up Python environment...")
         venv_path = os.path.join(self.install_dir, "venv")
-        
-        result = subprocess.run(f"cd '{self.install_dir}' && python3 -m venv venv", 
+
+        # Find the preferred Python (Homebrew 3.12+ preferred)
+        preferred_python = get_preferred_python()
+        if preferred_python is None:
+            print("❌ No suitable Python 3.10+ found.")
+            print("   Please install Python 3.12 via Homebrew:")
+            print("   brew install python@3.12 python-tk@3.12")
+            return False
+
+        print(f"   Using Python: {preferred_python}")
+
+        result = subprocess.run(f"cd '{self.install_dir}' && '{preferred_python}' -m venv venv",
                               shell=True, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"❌ Error creating virtual environment: {result.stderr}")
             return False
-            
+
         # Install dependencies
         pip_path = os.path.join(venv_path, "bin", "pip")
         requirements_path = os.path.join(self.current_dir, "requirements.txt")
