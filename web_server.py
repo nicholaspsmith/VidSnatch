@@ -672,6 +672,143 @@ def auto_cleanup_matching_partial_files(completed_title):
         return []
 
 
+def check_video_compatibility(video_path):
+    """Check if video is in a web-compatible format using ffmpeg probe.
+
+    Returns:
+        dict: {'compatible': bool, 'video_codec': str, 'audio_codec': str, 'container': str}
+    """
+    try:
+        # Use ffprobe to get video information
+        cmd = [
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_format',
+            '-show_streams',
+            video_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+        if result.returncode != 0:
+            print(f" [!] ffprobe failed for {video_path}: {result.stderr}")
+            return None
+
+        import json
+        probe_data = json.loads(result.stdout)
+
+        # Extract codec information
+        video_codec = None
+        audio_codec = None
+        container = probe_data.get('format', {}).get('format_name', '').split(',')[0]
+
+        for stream in probe_data.get('streams', []):
+            if stream.get('codec_type') == 'video' and not video_codec:
+                video_codec = stream.get('codec_name')
+            elif stream.get('codec_type') == 'audio' and not audio_codec:
+                audio_codec = stream.get('codec_name')
+
+        # Web-compatible codecs
+        compatible_video_codecs = ['h264', 'vp8', 'vp9', 'av1']
+        compatible_audio_codecs = ['aac', 'mp3', 'opus', 'vorbis']
+        compatible_containers = ['mp4', 'webm', 'mov']
+
+        is_compatible = (
+            video_codec in compatible_video_codecs and
+            audio_codec in compatible_audio_codecs and
+            container in compatible_containers
+        )
+
+        return {
+            'compatible': is_compatible,
+            'video_codec': video_codec,
+            'audio_codec': audio_codec,
+            'container': container
+        }
+
+    except subprocess.TimeoutExpired:
+        print(f" [!] ffprobe timeout for {video_path}")
+        return None
+    except Exception as e:
+        print(f" [!] Error checking video compatibility: {e}")
+        return None
+
+
+def convert_video_to_compatible_format(video_path):
+    """Convert video to web-compatible MP4 with H.264/AAC using ffmpeg.
+
+    Args:
+        video_path: Path to the video file to convert
+
+    Returns:
+        str: Path to the converted file, or None if conversion failed
+    """
+    try:
+        # Generate output filename
+        base, ext = os.path.splitext(video_path)
+        output_path = f"{base}_converted.mp4"
+
+        print(f" [+] Converting video to web-compatible format: {os.path.basename(video_path)}")
+
+        # ffmpeg conversion command
+        # -c:v libx264: H.264 video codec
+        # -preset fast: Faster encoding, slightly larger file
+        # -crf 23: Quality level (18-28 is good, lower = better quality)
+        # -c:a aac: AAC audio codec
+        # -b:a 192k: Audio bitrate
+        # -movflags +faststart: Enable streaming playback
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', '+faststart',
+            '-y',  # Overwrite output file if it exists
+            output_path
+        ]
+
+        print(f" [+] Running: {' '.join(cmd)}")
+
+        # Run conversion with progress output
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        # Wait for completion (no timeout - conversion can take a while)
+        stdout, stderr = process.communicate()
+
+        if process.returncode == 0:
+            print(f" [+] Conversion successful: {os.path.basename(output_path)}")
+
+            # Remove original file and rename converted file
+            try:
+                os.remove(video_path)
+                os.rename(output_path, video_path)
+                print(f" [+] Replaced original file with converted version")
+                return video_path
+            except Exception as e:
+                print(f" [!] Error replacing original file: {e}")
+                # Keep both files if replacement fails
+                return output_path
+        else:
+            print(f" [!] ffmpeg conversion failed: {stderr}")
+            # Clean up failed conversion file
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            return None
+
+    except Exception as e:
+        print(f" [!] Error during video conversion: {e}")
+        return None
+
+
 def setup_logging():
     """Set up circular buffer logging for the web server."""
     os.makedirs(".logs", exist_ok=True)
@@ -837,6 +974,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             self.handle_save_person_name_request()
         elif parsed_path.path == "/api/metadata/tags":
             self.handle_save_tags_request()
+        elif parsed_path.path == "/api/metadata/rating":
+            self.handle_save_rating_request()
         elif parsed_path.path == "/api/metadata/import":
             self.handle_import_metadata_request()
         else:
@@ -1459,9 +1598,68 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             except PermissionError:
                 pass
 
+            # Check for video files in root directory (not in subdirectories)
+            root_files = []
+            try:
+                for item in sorted(os.listdir(folder_path)):
+                    # Skip hidden files and system files
+                    if item.startswith(".") or item.startswith("~"):
+                        continue
+
+                    # Skip files that are currently being downloaded
+                    if item in actively_downloading_files:
+                        continue
+
+                    # Skip partial download files
+                    if item.endswith(
+                        (".part", ".ytdl", ".temp", ".download", ".crdownload")
+                    ):
+                        continue
+
+                    item_path = os.path.join(folder_path, item)
+                    if os.path.isfile(item_path):
+                        # Only include video files
+                        if not item.lower().endswith(config.VIDEO_EXTENSIONS):
+                            continue
+
+                        # Get file info
+                        stat = os.stat(item_path)
+                        size = stat.st_size
+                        modified = stat.st_mtime
+
+                        # Format size
+                        if size < 1024:
+                            size_str = f"{size} B"
+                        elif size < 1024 * 1024:
+                            size_str = f"{size / 1024:.1f} KB"
+                        elif size < 1024 * 1024 * 1024:
+                            size_str = f"{size / (1024 * 1024):.1f} MB"
+                        else:
+                            size_str = f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+                        # Get file metadata (URL and title)
+                        metadata = file_metadata.get_file_metadata(item)
+                        source_url = metadata.get("url", "") if metadata else ""
+
+                        root_files.append(
+                            {
+                                "name": item,
+                                "size": size_str,
+                                "modified": modified,
+                                "path": item_path,
+                                "url": source_url,
+                            }
+                        )
+            except PermissionError:
+                pass
+
             # If there are subdirectories with videos, organize by folder
             if has_video_subdirs:
                 folders = {}
+
+                # Add root files as "Main" folder if any exist
+                if root_files:
+                    folders["Main"] = root_files
 
                 for subdir in sorted(subdirs):
                     subdir_path = os.path.join(folder_path, subdir)
@@ -1943,6 +2141,34 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             )
         except Exception as e:
             print(f" [!] Error saving tags: {e}")
+            self.send_json_response({"success": False, "error": str(e)}, status=500)
+
+    def handle_save_rating_request(self):
+        """Handle request to save rating for a file."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+
+            filename = data.get("filename")
+            rating = data.get("rating")
+
+            if not filename:
+                self.send_json_response(
+                    {"success": False, "error": "Missing filename"}, status=400
+                )
+                return
+
+            metadata = get_video_metadata()
+            metadata.set_rating(filename, rating)
+
+            self.send_json_response({"success": True})
+        except json.JSONDecodeError:
+            self.send_json_response(
+                {"success": False, "error": "Invalid JSON"}, status=400
+            )
+        except Exception as e:
+            print(f" [!] Error saving rating: {e}")
             self.send_json_response({"success": False, "error": str(e)}, status=500)
 
     def handle_import_metadata_request(self):
@@ -2625,6 +2851,56 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f" [!] Error storing file metadata: {e}")
 
+                # Check and convert video format if needed
+                try:
+                    download_path = config.get_video_download_path()
+                    converted_files = []
+
+                    for filename in os.listdir(download_path):
+                        # Check if this file matches the download
+                        if any(
+                            word.lower() in filename.lower()
+                            for word in progress.title.split()
+                            if len(word) > 3
+                        ):
+                            if not filename.endswith((".part", ".ytdl", ".temp")):
+                                video_path = os.path.join(download_path, filename)
+
+                                # Check if it's a video file
+                                video_extensions = config.VIDEO_EXTENSIONS if hasattr(config, 'VIDEO_EXTENSIONS') else ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v')
+                                if filename.lower().endswith(video_extensions):
+                                    print(f" [+] Checking video compatibility: {filename}")
+
+                                    compat_info = check_video_compatibility(video_path)
+
+                                    if compat_info is None:
+                                        print(f" [!] Could not check compatibility for {filename} - ffmpeg may not be installed")
+                                    elif not compat_info['compatible']:
+                                        print(f" [!] Video is not web-compatible:")
+                                        print(f"     Container: {compat_info['container']}")
+                                        print(f"     Video codec: {compat_info['video_codec']}")
+                                        print(f"     Audio codec: {compat_info['audio_codec']}")
+                                        print(f" [+] Starting automatic conversion...")
+
+                                        progress.status = "processing"
+                                        converted_path = convert_video_to_compatible_format(video_path)
+
+                                        if converted_path:
+                                            converted_files.append(os.path.basename(converted_path))
+                                            print(f" [+] Successfully converted: {filename}")
+                                        else:
+                                            print(f" [!] Failed to convert: {filename}")
+
+                                        progress.status = "completed"
+                                    else:
+                                        print(f" [+] Video is already web-compatible ({compat_info['video_codec']}/{compat_info['audio_codec']} in {compat_info['container']})")
+
+                    if converted_files:
+                        print(f" [+] Auto-converted {len(converted_files)} video(s) to web-compatible format")
+
+                except Exception as e:
+                    print(f" [!] Error during video format conversion: {e}")
+
                 # Mark as completed in URL tracker
                 if hasattr(progress, "url_track_id"):
                     tracker = get_tracker()
@@ -2748,6 +3024,56 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                         print(f" [+] Fallback download completed successfully")
                         progress.status = "completed"
                         progress.percent = 100.0
+
+                        # Check and convert video format if needed
+                        try:
+                            download_path = config.get_video_download_path()
+                            converted_files = []
+
+                            for filename in os.listdir(download_path):
+                                # Check if this file matches the download
+                                if any(
+                                    word.lower() in filename.lower()
+                                    for word in progress.title.split()
+                                    if len(word) > 3
+                                ):
+                                    if not filename.endswith((".part", ".ytdl", ".temp")):
+                                        video_path = os.path.join(download_path, filename)
+
+                                        # Check if it's a video file
+                                        video_extensions = config.VIDEO_EXTENSIONS if hasattr(config, 'VIDEO_EXTENSIONS') else ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v')
+                                        if filename.lower().endswith(video_extensions):
+                                            print(f" [+] Checking video compatibility: {filename}")
+
+                                            compat_info = check_video_compatibility(video_path)
+
+                                            if compat_info is None:
+                                                print(f" [!] Could not check compatibility for {filename} - ffmpeg may not be installed")
+                                            elif not compat_info['compatible']:
+                                                print(f" [!] Video is not web-compatible:")
+                                                print(f"     Container: {compat_info['container']}")
+                                                print(f"     Video codec: {compat_info['video_codec']}")
+                                                print(f"     Audio codec: {compat_info['audio_codec']}")
+                                                print(f" [+] Starting automatic conversion...")
+
+                                                progress.status = "processing"
+                                                converted_path = convert_video_to_compatible_format(video_path)
+
+                                                if converted_path:
+                                                    converted_files.append(os.path.basename(converted_path))
+                                                    print(f" [+] Successfully converted: {filename}")
+                                                else:
+                                                    print(f" [!] Failed to convert: {filename}")
+
+                                                progress.status = "completed"
+                                            else:
+                                                print(f" [+] Video is already web-compatible ({compat_info['video_codec']}/{compat_info['audio_codec']} in {compat_info['container']})")
+
+                            if converted_files:
+                                print(f" [+] Auto-converted {len(converted_files)} video(s) to web-compatible format")
+
+                        except Exception as e:
+                            print(f" [!] Error during video format conversion: {e}")
 
                         # Mark as completed in URL tracker
                         if hasattr(progress, "url_track_id"):
@@ -2981,6 +3307,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
             <link rel="icon" type="image/png" sizes="16x16" href="/static/favicons/favicon-16x16.png">
             <link rel="manifest" href="/static/favicons/site.webmanifest">
             <link rel="shortcut icon" href="/favicon.ico">
+            <!-- Material UI Icons for Star Rating -->
+            <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
             <style>
                 :root {{
                     /* Light mode colors */
@@ -3640,6 +3968,27 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     opacity: 1;
                 }}
 
+                .star-rating {{
+                    display: inline-flex;
+                    gap: 2px;
+                    cursor: pointer;
+                    user-select: none;
+                }}
+
+                .star {{
+                    font-size: 20px;
+                    color: #ddd;
+                    transition: color 0.2s ease;
+                }}
+
+                .star.filled {{
+                    color: #ffc107;
+                }}
+
+                .star:hover {{
+                    color: #ffca28;
+                }}
+
                 .file-actions {{
                     display: flex;
                     gap: 5px;
@@ -3816,6 +4165,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     max-height: 100vh;
                     display: block;
                     background: #000;
+                    transition: height 1s ease-in-out;
                 }}
                 
                 .video-controls {{
@@ -4459,7 +4809,8 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                 // Server-side metadata storage
                 let serverMetadata = {{
                     person_names: {{}},
-                    file_tags: {{}}
+                    file_tags: {{}},
+                    ratings: {{}}
                 }};
 
                 // Deleted URLs storage for suggested downloads (keep in localStorage)
@@ -4577,7 +4928,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     if (personName) {{
                         cell.innerHTML = `
                             <div class="name-display">
-                                <a href="https://www.fuq.com/search/${{encodeURIComponent(personName)}}/" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
+                                <a href="https://www.google.com/search?q={{encodeURIComponent(personName)}}" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
                                 <span class="edit-name-icon" onclick="editPersonName('${{filename.replace(/'/g, "\\\\'")}}')" title="Edit name">✏️</span>
                             </div>
                         `;
@@ -4941,6 +5292,10 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                 aVal = (getPersonName(a.name) || '').toLowerCase();
                                 bVal = (getPersonName(b.name) || '').toLowerCase();
                                 break;
+                            case 'rating':
+                                aVal = getRating(a.name);
+                                bVal = getRating(b.name);
+                                break;
                             case 'size':
                                 aVal = a.sizeBytes;
                                 bVal = b.sizeBytes;
@@ -4991,19 +5346,23 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                         Title ${{currentSort.column === 'title' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 12%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
+                                    <th class="resizable-column" style="width: 10%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
                                         Name ${{currentSort.column === 'name' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 10%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
+                                    <th class="resizable-column" style="width: 8%; cursor: pointer;" onclick="sortFiles('rating')" title="Sort by rating">
+                                        Rating ${{currentSort.column === 'rating' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 8%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
                                         File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 38%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
+                                    <th class="resizable-column" style="width: 36%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
                                         Tags ${{currentSort.column === 'tags' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
+                                    <th style="width: 13%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
                                         Date Added ${{currentSort.column === 'date' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                     </th>
                                 </tr>
@@ -5050,7 +5409,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                             <td class="person-name-cell" data-filename="${{file.name}}" onclick="event.stopPropagation()">
                                                 ${{personName ? `
                                                     <div class="name-display">
-                                                        <a href="https://www.fuq.com/search/${{encodeURIComponent(personName)}}/" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
+                                                        <a href="https://www.google.com/search?q=${{encodeURIComponent(personName)}}" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
                                                         <span class="edit-name-icon" onclick="editPersonName('${{escapeFilename(file.name)}}')" title="Edit name">✏️</span>
                                                     </div>
                                                 ` : `
@@ -5060,6 +5419,15 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                                            onkeydown="handlePersonNameKeydown(event, '${{escapeFilename(file.name)}}')"
                                                            onblur="handlePersonNameBlur(event, '${{escapeFilename(file.name)}}')">
                                                 `}}
+                                            </td>
+                                            <td onclick="event.stopPropagation()">
+                                                <div class="star-rating" data-filename="${{file.name}}">
+                                                    <span class="star" data-value="1">★</span>
+                                                    <span class="star" data-value="2">★</span>
+                                                    <span class="star" data-value="3">★</span>
+                                                    <span class="star" data-value="4">★</span>
+                                                    <span class="star" data-value="5">★</span>
+                                                </div>
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>
@@ -5168,7 +5536,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                             if (result.has_subdirs) {{
                                 // Handle tabbed folder view
                                 allFoldersData = result.folders || {{}};
-                                const folderNames = Object.keys(allFoldersData).sort();
+                                const folderNames = Object.keys(allFoldersData).sort((a, b) => {{
+                                    // "Main" always comes first
+                                    if (a === 'Main') return -1;
+                                    if (b === 'Main') return 1;
+                                    // Otherwise sort alphabetically
+                                    return a.localeCompare(b);
+                                }});
 
                                 if (folderNames.length > 0) {{
                                     // Set initial folder if not set
@@ -5283,7 +5657,13 @@ class QuikvidHandler(BaseHTTPRequestHandler):
 
                 function switchFolder(folderName) {{
                     currentFolderTab = folderName;
-                    const folderNames = Object.keys(allFoldersData).sort();
+                    const folderNames = Object.keys(allFoldersData).sort((a, b) => {{
+                        // "Main" always comes first
+                        if (a === 'Main') return -1;
+                        if (b === 'Main') return 1;
+                        // Otherwise sort alphabetically
+                        return a.localeCompare(b);
+                    }});
 
                     // Get current search term before switching
                     const searchBar = document.getElementById('fileSearchBar');
@@ -5347,19 +5727,23 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                         Title ${{currentSort.column === 'title' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 12%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
+                                    <th class="resizable-column" style="width: 10%; cursor: pointer;" onclick="sortFiles('name')" title="Sort by person name">
                                         Name ${{currentSort.column === 'name' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 10%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
+                                    <th class="resizable-column" style="width: 8%; cursor: pointer;" onclick="sortFiles('rating')" title="Sort by rating">
+                                        Rating ${{currentSort.column === 'rating' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
+                                        <div class="column-resizer"></div>
+                                    </th>
+                                    <th class="resizable-column" style="width: 8%; cursor: pointer;" onclick="sortFiles('size')" title="Sort by file size">
                                         File Size ${{currentSort.column === 'size' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th class="resizable-column" style="width: 38%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
+                                    <th class="resizable-column" style="width: 36%; cursor: pointer;" onclick="sortFiles('tags')" title="Sort by tags">
                                         Tags ${{currentSort.column === 'tags' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                         <div class="column-resizer"></div>
                                     </th>
-                                    <th style="width: 15%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
+                                    <th style="width: 13%; cursor: pointer;" onclick="sortFiles('date')" title="Sort by date">
                                         Date Added ${{currentSort.column === 'date' ? (currentSort.order === 'asc' ? '↑' : '↓') : '↕'}}
                                     </th>
                                 </tr>
@@ -5383,7 +5767,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                             <td class="person-name-cell" data-filename="${{file.name}}" onclick="event.stopPropagation()">
                                                 ${{personName ? `
                                                     <div class="name-display">
-                                                        <a href="https://www.fuq.com/search/${{encodeURIComponent(personName)}}/" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
+                                                        <a href="https://www.google.com/search?q=${{encodeURIComponent(personName)}}" target="_blank" class="person-name-link" onclick="event.stopPropagation()">${{personName}}</a>
                                                         <span class="edit-name-icon" onclick="editPersonName('${{escapeFilename(file.name)}}')" title="Edit name">✏️</span>
                                                     </div>
                                                 ` : `
@@ -5393,6 +5777,15 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                                                            onkeydown="handlePersonNameKeydown(event, '${{escapeFilename(file.name)}}')"
                                                            onblur="handlePersonNameBlur(event, '${{escapeFilename(file.name)}}')">
                                                 `}}
+                                            </td>
+                                            <td onclick="event.stopPropagation()">
+                                                <div class="star-rating" data-filename="${{file.name}}">
+                                                    <span class="star" data-value="1">★</span>
+                                                    <span class="star" data-value="2">★</span>
+                                                    <span class="star" data-value="3">★</span>
+                                                    <span class="star" data-value="4">★</span>
+                                                    <span class="star" data-value="5">★</span>
+                                                </div>
                                             </td>
                                             <td>${{file.size}}</td>
                                             <td>
@@ -5417,6 +5810,7 @@ class QuikvidHandler(BaseHTTPRequestHandler):
                     fileExplorer.innerHTML = tableHTML;
                     initializeColumnResizing();
                     initializeAllTagsDisplays();
+                    initializeAllRatings();
                     videoFilesList = filesData.map(file => file.name);
                 }}
                 
@@ -6457,11 +6851,72 @@ The web interface is limited by browser security - only extensions can access hi
                     loadBtn.textContent = 'Reload Suggestions';
                 }}
                 
+                function isUniqueVideoUrl(url) {{
+                    try {{
+                        const urlObj = new URL(url);
+                        const pathname = urlObj.pathname;
+                        const search = urlObj.search;
+
+                        // Reject base/homepage URLs (just domain or domain with "/" or "/index.html" etc)
+                        if (pathname === '/' || pathname === '' ||
+                            pathname.match(/^\/(index|home|main)\.(html?|php|aspx?)$/i)) {{
+                            return false;
+                        }}
+
+                        // Reject search result pages
+                        if (search.match(/[?&](page|p|offset|start)=/i) ||
+                            pathname.match(/\/(search|results?|browse|category|categories|tags?)\/?$/i)) {{
+                            return false;
+                        }}
+
+                        // Reject URLs with search query parameters that suggest it's a search page
+                        if (search.match(/[?&](q|query|keyword|search)=/i) && !search.match(/[?&](v|id|video)=/i)) {{
+                            return false;
+                        }}
+
+                        // Accept URLs with video identifiers (common patterns)
+                        if (search.match(/[?&](v|id|video|watch)=/i) ||
+                            pathname.match(/\/watch\//i) ||
+                            pathname.match(/\/video[s]?\//i) ||
+                            pathname.match(/\/embed\//i) ||
+                            pathname.match(/\/player\//i)) {{
+                            return true;
+                        }}
+
+                        // Accept URLs with descriptive paths containing dashes (e.g., /videos/guy-plays-with-puppy)
+                        const pathSegments = pathname.split('/').filter(s => s.length > 0);
+                        if (pathSegments.length > 1) {{
+                            // Check if any path segment contains dashes or underscores (indicates descriptive slug)
+                            const hasDescriptiveSegment = pathSegments.some(segment =>
+                                segment.includes('-') || segment.includes('_')
+                            );
+                            if (hasDescriptiveSegment) {{
+                                return true;
+                            }}
+
+                            // Check if last segment looks like an ID (numbers, alphanumeric mix)
+                            const lastSegment = pathSegments[pathSegments.length - 1];
+                            if (lastSegment.match(/^[a-zA-Z0-9]{{6,}}$/) || lastSegment.match(/^\d+$/)) {{
+                                return true;
+                            }}
+                        }}
+
+                        // Reject everything else (likely category pages, home pages, etc.)
+                        return false;
+
+                    }} catch (error) {{
+                        // If URL parsing fails, reject it
+                        return false;
+                    }}
+                }}
+
                 function displaySuggestions(suggestions) {{
                     const suggestedDownloads = document.getElementById('suggestedDownloads');
-                    
-                    // Filter out deleted URLs
-                    const filteredSuggestions = suggestions.filter(suggestion => !isUrlDeleted(suggestion.url));
+
+                    // Filter out deleted URLs and non-unique pages
+                    const filteredSuggestions = suggestions.filter(suggestion =>
+                        !isUrlDeleted(suggestion.url) && isUniqueVideoUrl(suggestion.url)
+                    );
                     
                     if (filteredSuggestions.length === 0) {{
                         suggestedDownloads.innerHTML = `
@@ -6593,7 +7048,90 @@ The web interface is limited by browser security - only extensions can access hi
                         console.error('Error saving tags:', error);
                     }}
                 }}
-                
+
+                function getRating(filename) {{
+                    return serverMetadata.ratings[filename] || 0;
+                }}
+
+                async function setRating(filename, rating) {{
+                    try {{
+                        const response = await fetch('/api/metadata/rating', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ filename, rating }})
+                        }});
+                        const result = await response.json();
+                        if (result.success) {{
+                            if (rating && rating > 0) {{
+                                serverMetadata.ratings[filename] = rating;
+                            }} else {{
+                                delete serverMetadata.ratings[filename];
+                            }}
+                            updateStarDisplay(filename);
+                        }}
+                    }} catch (error) {{
+                        console.error('Error saving rating:', error);
+                    }}
+                }}
+
+                function updateStarDisplay(filename) {{
+                    const ratingContainer = document.querySelector(`.star-rating[data-filename="${{filename}}"]`);
+                    if (!ratingContainer) return;
+
+                    const rating = getRating(filename);
+                    const stars = ratingContainer.querySelectorAll('.star');
+
+                    stars.forEach((star, index) => {{
+                        if (index < rating) {{
+                            star.classList.add('filled');
+                        }} else {{
+                            star.classList.remove('filled');
+                        }}
+                    }});
+                }}
+
+                function initializeAllRatings() {{
+                    document.querySelectorAll('.star-rating').forEach(container => {{
+                        const filename = container.getAttribute('data-filename');
+                        if (filename) {{
+                            updateStarDisplay(filename);
+
+                            // Add click handlers to stars
+                            const stars = container.querySelectorAll('.star');
+                            stars.forEach(star => {{
+                                star.addEventListener('click', function() {{
+                                    const rating = parseInt(this.getAttribute('data-value'));
+                                    const currentRating = getRating(filename);
+
+                                    // If clicking the same rating, remove it (set to 0)
+                                    if (rating === currentRating) {{
+                                        setRating(filename, 0);
+                                    }} else {{
+                                        setRating(filename, rating);
+                                    }}
+                                }});
+
+                                // Hover effect
+                                star.addEventListener('mouseenter', function() {{
+                                    const hoverValue = parseInt(this.getAttribute('data-value'));
+                                    stars.forEach((s, i) => {{
+                                        if (i < hoverValue) {{
+                                            s.classList.add('filled');
+                                        }} else {{
+                                            s.classList.remove('filled');
+                                        }}
+                                    }});
+                                }});
+                            }});
+
+                            // Reset on mouse leave
+                            container.addEventListener('mouseleave', function() {{
+                                updateStarDisplay(filename);
+                            }});
+                        }}
+                    }});
+                }}
+
                 function editTags(filename) {{
                     const container = document.querySelector(`[data-filename="${{filename}}"]`);
                     if (!container) return;

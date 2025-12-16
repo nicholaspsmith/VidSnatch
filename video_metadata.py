@@ -13,7 +13,8 @@ class VideoMetadata:
         self.storage_file = storage_file
         self.data = {
             'person_names': {},  # filename -> person name
-            'file_tags': {}      # filename -> list of tags
+            'file_tags': {},     # filename -> list of tags
+            'ratings': {}        # filename -> rating (1-5)
         }
         self.lock = threading.Lock()
         self.load()
@@ -24,10 +25,13 @@ class VideoMetadata:
             if os.path.exists(self.storage_file):
                 with open(self.storage_file, 'r') as f:
                     self.data = json.load(f)
+                # Ensure all keys exist for backwards compatibility
+                if 'ratings' not in self.data:
+                    self.data['ratings'] = {}
                 print(f" [+] Loaded video metadata for {len(self.data.get('person_names', {}))} files")
         except Exception as e:
             print(f" [!] Error loading video metadata: {e}")
-            self.data = {'person_names': {}, 'file_tags': {}}
+            self.data = {'person_names': {}, 'file_tags': {}, 'ratings': {}}
 
     def save(self):
         """Save metadata to persistent storage."""
@@ -66,6 +70,20 @@ class VideoMetadata:
     def get_tags(self, filename):
         """Get tags for a file."""
         return self.data['file_tags'].get(filename, [])
+
+    def set_rating(self, filename, rating):
+        """Set rating for a file (1-5 stars)."""
+        with self.lock:
+            if rating is not None and 1 <= rating <= 5:
+                self.data['ratings'][filename] = rating
+            else:
+                # Remove if invalid or None
+                self.data['ratings'].pop(filename, None)
+        self.save()
+
+    def get_rating(self, filename):
+        """Get rating for a file."""
+        return self.data['ratings'].get(filename, 0)
 
     def add_tag(self, filename, tag):
         """Add a single tag to a file."""
