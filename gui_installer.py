@@ -766,7 +766,8 @@ python3 menubar_app.py
             if "Stopped" in cmd or "pkill" in cmd:
                 # Log successful process termination
                 if result.returncode == 0:
-                    self.log_output(f"✅ {cmd.split("'")[1] if "'" in cmd else 'Process'} terminated")
+                    process_name = cmd.split("'")[1] if "'" in cmd else 'Process'
+                    self.log_output(f"✅ {process_name} terminated")
             
         # Kill any Python processes running from VidSnatch directory
         try:

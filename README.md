@@ -1,4 +1,4 @@
-# 🎬 VidSnatch
+# VidSnatch
 
 **The Ultimate Video Downloader for macOS**
 
@@ -6,59 +6,80 @@
 
 ---
 
-## ✨ What is VidSnatch?
+## What is VidSnatch?
 
 VidSnatch is a powerful yet simple video downloader that works seamlessly on macOS. It combines a beautiful **Chrome extension** with a native **menu bar app** to make downloading videos as easy as clicking a button.
 
-### 🚀 Key Features
+### Key Features
 
-- **🎯 One-Click Downloads** - Simply click the extension icon on any video page
-- **📱 Menu Bar Integration** - Native macOS app that lives in your menu bar
-- **🌐 Chrome Extension** - Download directly from any website
-- **📊 Real-Time Progress** - Watch your downloads with live progress tracking
-- **🔄 Multiple Downloads** - Download several videos simultaneously
-- **📁 Smart Management** - Organize downloads with custom names and folders
-- **🌙 Dark Mode** - Beautiful interface that adapts to your system theme
+- **One-Click Downloads** - Simply click the extension icon on any video page
+- **Menu Bar Integration** - Native macOS app that lives in your menu bar
+- **Chrome Extension** - Download directly from any website
+- **Real-Time Progress** - Watch your downloads with live progress tracking
+- **Multiple Downloads** - Download several videos simultaneously
+- **Smart Management** - Organize downloads with custom names and folders
+- **Dark Mode** - Beautiful interface that adapts to your system theme
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Download & Install
+### Prerequisites
 
-1. **Download VidSnatch** - Double-click the `🎬 VidSnatch Manager.app` 
-2. **Choose "Install"** - The installer will set up everything automatically
-3. **Setup Chrome Extension** - Follow the guided setup for one-click downloads
+VidSnatch requires Python 3.10+ installed via Homebrew. If you're starting from a fresh macOS installation, follow these steps:
+
+**1. Install Homebrew** (if not already installed)
+
+Open Terminal and run:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+After installation, follow the instructions to add Homebrew to your PATH.
+
+**2. Install Python 3.12 and tkinter**
+
+```bash
+brew install python@3.12
+brew install python-tk@3.12
+```
+
+### Installation
+
+1. **Download VidSnatch** - Clone or download this repository
+2. **Run the installer** - Double-click `VidSnatch Manager.command` (or run it from Terminal)
+3. **Choose "Install"** - The installer will set up everything automatically
+4. **Setup Chrome Extension** - Follow the guided setup for one-click downloads
 
 That's it! VidSnatch is now running in your menu bar and ready to download videos.
 
-### 2. Start Downloading Videos
+### Start Downloading Videos
 
 1. **Visit any video site** (YouTube, TikTok, Instagram, etc.)
-2. **Click the VidSnatch extension** in your Chrome toolbar  
-3. **Hit "📹 Download Video"** - Your video will start downloading immediately
+2. **Click the VidSnatch extension** in your Chrome toolbar
+3. **Hit "Download Video"** - Your video will start downloading immediately
 4. **Track progress** - Watch the real-time progress in the extension popup
 
 ---
 
-## 🎭 How It Works
+## How It Works
 
 VidSnatch consists of three integrated components:
 
-### 📱 Menu Bar App
+### Menu Bar App
 - Lives in your macOS menu bar
 - Automatically starts the download server
 - Provides quick access to the web interface
 - Start/stop server with one click
 
-### 🌐 Chrome Extension  
+### Chrome Extension
 - Detects videos on any webpage
 - One-click downloading directly from sites
 - Real-time progress tracking
 - Multiple simultaneous downloads
 - Smart retry functionality
 
-### 💻 Web Interface
+### Web Interface
 - Beautiful download management interface
 - Add custom names to organize your videos
 - Sort and search your downloaded files
@@ -67,19 +88,19 @@ VidSnatch consists of three integrated components:
 
 ---
 
-## 📋 System Requirements
+## System Requirements
 
 - **macOS** (Intel or Apple Silicon)
-- **Python 3.7+** (automatically installed if missing)
+- **Python 3.10+** via Homebrew (see Prerequisites above)
 - **Google Chrome** (for the extension)
 
 ---
 
-## 🌍 Supported Sites
+## Supported Sites
 
 VidSnatch supports **1000+ video sites** through yt-dlp, including:
 
-**🔥 Most Popular:**
+**Most Popular:**
 - YouTube, YouTube Music
 - TikTok, Instagram, Facebook
 - Twitter/X, Reddit, 9GAG
@@ -91,27 +112,27 @@ VidSnatch supports **1000+ video sites** through yt-dlp, including:
 
 ---
 
-## 🛠️ Advanced Usage
+## Advanced Usage
 
 ### Managing Downloads
-- **📝 Custom Names** - Add person names or custom labels to downloaded videos
-- **📁 Folder Control** - Change download location anytime
-- **🔄 Smart Retry** - Failed downloads automatically search your browser history
-- **🗂️ Organization** - Sort by name, size, or date
+- **Custom Names** - Add person names or custom labels to downloaded videos
+- **Folder Control** - Change download location anytime
+- **Smart Retry** - Failed downloads automatically search your browser history
+- **Organization** - Sort by name, size, or date
 
 ### Web Interface
-- **Open from Menu Bar** - Click "Open Web Interface" 
-- **Open from Extension** - Click "🌐 Open Web Interface"
+- **Open from Menu Bar** - Click "Open Web Interface"
+- **Open from Extension** - Click "Open Web Interface"
 - **Smart Tab Switching** - Automatically switches to existing web interface tabs
 
 ### Maintenance
-- **📦 Reinstall** - Use VidSnatch Manager to reinstall/update
-- **🗑️ Uninstall** - Complete removal including menu bar icon
-- **🔧 Settings** - Customize download behavior and interface
+- **Reinstall** - Use VidSnatch Manager to reinstall/update
+- **Uninstall** - Complete removal including menu bar icon
+- **Settings** - Customize download behavior and interface
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Extension shows "Server not running"
 - Check that VidSnatch is running in your menu bar
@@ -133,18 +154,23 @@ VidSnatch supports **1000+ video sites** through yt-dlp, including:
 - Try reloading the extension
 - Check for Chrome updates
 
+### Installation fails with Python errors
+- Ensure you have Python 3.10+ installed via Homebrew (not the system Python)
+- Run `brew install python@3.12 python-tk@3.12`
+- The installer will use Homebrew Python automatically
+
 ---
 
-## 🔒 Privacy & Security
+## Privacy and Security
 
 - **100% Local** - All processing happens on your computer
-- **No Data Collection** - We don't track or store any personal information  
+- **No Data Collection** - We don't track or store any personal information
 - **Open Source** - Full source code available for review
 - **Secure Downloads** - Downloads go directly to your chosen folder
 
 ---
 
-## 💝 Credits
+## Credits
 
 VidSnatch is built with:
 - **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - The powerful video extraction engine
@@ -153,12 +179,10 @@ VidSnatch is built with:
 
 ---
 
-## 📞 Support
+## Support
 
 Having issues? Need help?
 
 1. **Check Troubleshooting** - Most issues have simple solutions above
-2. **Reinstall** - Use VidSnatch Manager to reinstall cleanly  
+2. **Reinstall** - Use VidSnatch Manager to reinstall cleanly
 3. **Report Issues** - Open an issue on GitHub with details
-
-**Enjoy downloading! 🎉**
